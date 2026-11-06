@@ -11,8 +11,6 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <!-- Babel for JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased">
     <div id="root"></div>
@@ -23,15 +21,19 @@
         function App() {
             // 初期データ（サンプル）
             const initialData = {
-                shopping: [
+                daily: [
                     { id: 1, text: "牛乳（1L）", completed: false },
                     { id: 2, text: "卵（1パック）", completed: true },
                     { id: 3, text: "お米 5kg", completed: false }
                 ],
                 wishes: [
-                    { id: 1, text: "家族みんなで温泉旅行に行く", completed: false },
-                    { id: 2, text: "リビングの模様替えをする", completed: false },
-                    { id: 3, text: "新しいホットプレートを買う", completed: true }
+                    { id: 1, text: "新しいホットプレート", completed: false },
+                    { id: 2, text: "リビングのクッション", completed: false }
+                ],
+                cleaning: [
+                    { id: 1, place: "お風呂の防カビ燻煙剤", assignee: "パパ", date: "2026-11-15", completed: false },
+                    { id: 2, place: "エアコンフィルター掃除", assignee: "ママ", date: "2026-11-20", completed: false },
+                    { id: 3, place: "換気扇の掃除", assignee: "パパ", date: "2026-11-30", completed: false }
                 ],
                 travel: [
                     { id: 1, text: "春の箱根旅行（計画中）", date: "2026-04-15", memo: "露天風呂付き客室を予約する" },
@@ -43,34 +45,41 @@
                 ]
             };
 
-            // ローカルストレージからデータを読み込む（なければ初期データ）
-            const [activeTab, setActiveTab] = useState('shopping');
+            const [activeTab, setActiveTab] = useState('daily');
             const [data, setData] = useState(() => {
-                const saved = localStorage.getItem('family_app_data');
+                const saved = localStorage.getItem('family_app_data_v2');
                 return saved ? JSON.parse(saved) : initialData;
             });
 
+            // 入力用フォームの状態
             const [inputText, setInputText] = useState('');
             const [inputDate, setInputDate] = useState('');
             const [inputMemo, setInputMemo] = useState('');
+            const [inputAssignee, setInputAssignee] = useState('パパ');
+            const [inputPlace, setInputPlace] = useState('');
 
-            // データが変更されたらローカルストレージに保存
+            // データ変更時にローカルストレージへ保存
             useEffect(() => {
-                localStorage.setItem('family_app_data', JSON.stringify(data));
+                localStorage.setItem('family_app_data_v2', JSON.stringify(data));
             }, [data]);
 
             // アイテム追加
             const handleAddItem = (e) => {
                 e.preventDefault();
-                if (!inputText.trim()) return;
+                
+                let newItem = { id: Date.now(), completed: false };
 
-                const newItem = {
-                    id: Date.now(),
-                    text: inputText.trim(),
-                    completed: false,
-                    date: inputDate || undefined,
-                    memo: inputMemo.trim() || undefined
-                };
+                if (activeTab === 'cleaning') {
+                    if (!inputPlace.trim()) return;
+                    newItem.place = inputPlace.trim();
+                    newItem.assignee = inputAssignee;
+                    newItem.date = inputDate || '期限なし';
+                } else {
+                    if (!inputText.trim()) return;
+                    newItem.text = inputText.trim();
+                    newItem.date = inputDate || undefined;
+                    newItem.memo = inputMemo.trim() || undefined;
+                }
 
                 setData(prev => ({
                     ...prev,
@@ -78,11 +87,12 @@
                 }));
 
                 setInputText('');
+                setInputPlace('');
                 setInputDate('');
                 setInputMemo('');
             };
 
-            // チェック切り替え（買い物・やりたい事用）
+            // チェック切り替え
             const toggleComplete = (id) => {
                 setData(prev => ({
                     ...prev,
@@ -101,29 +111,29 @@
             };
 
             const tabConfig = {
-                shopping: { label: '買い物リスト', icon: 'shopping-cart', color: 'bg-amber-500' },
-                wishes: { label: 'やりたい事', icon: 'heart', color: 'bg-rose-500' },
-                travel: { label: '旅行リスト', icon: 'plane', color: 'bg-sky-500' },
-                events: { label: '瑠華イベント', icon: 'calendar', color: 'bg-emerald-500' }
+                daily: { label: '日用品', color: 'bg-amber-500' },
+                wishes: { label: '買いたいもの', color: 'bg-rose-500' },
+                cleaning: { label: '家の掃除', color: 'bg-teal-500' },
+                travel: { label: '旅行リスト', color: 'bg-sky-500' },
+                events: { label: '瑠華イベント', color: 'bg-emerald-500' }
             };
 
             return (
                 <div className="min-h-screen flex flex-col max-w-md mx-auto bg-white shadow-xl">
                     {/* ヘッダー */}
-                    <header className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white p-6 shadow-md">
-                        <h1 className="text-2xl font-bold text-center tracking-wide">🏠 家族情報共有</h1>
-                        <p className="text-xs text-indigo-100 text-center mt-1">みんなの予定とリストをひとつに</p>
+                    <header className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white p-5 shadow-md">
+                        <h1 className="text-xl font-bold text-center tracking-wide">🏠 家族情報共有アプリ</h1>
                     </header>
 
-                    {/* タブナビゲーション */}
-                    <nav className="grid grid-cols-4 bg-slate-100 p-1 border-b border-slate-200">
+                    {/* タブナビゲーション（5つに対応） */}
+                    <nav className="grid grid-cols-5 bg-slate-100 p-1 border-b border-slate-200 text-center">
                         {Object.keys(tabConfig).map(tabKey => {
                             const isActive = activeTab === tabKey;
                             return (
                                 <button
                                     key={tabKey}
                                     onClick={() => setActiveTab(tabKey)}
-                                    className={`py-3 text-xs font-semibold rounded-lg transition-all flex flex-col items-center justify-center gap-1 ${
+                                    className={`py-2 px-1 text-[11px] font-semibold rounded-lg transition-all flex flex-col items-center justify-center ${
                                         isActive 
                                             ? 'bg-white text-indigo-600 shadow-sm' 
                                             : 'text-slate-600 hover:text-slate-900'
@@ -137,38 +147,79 @@
 
                     {/* メインコンテンツ */}
                     <main className="flex-1 p-4 overflow-y-auto pb-24">
-                        <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                        <h2 className="text-base font-bold text-slate-800 mb-3 flex items-center gap-2">
                             <span className={`w-3 h-3 rounded-full ${tabConfig[activeTab].color}`}></span>
                             {tabConfig[activeTab].label}
                         </h2>
 
                         {/* 入力フォーム */}
                         <form onSubmit={handleAddItem} className="bg-slate-50 p-3 rounded-xl border border-slate-200 mb-4 shadow-sm space-y-3">
-                            <input
-                                type="text"
-                                placeholder={activeTab === 'shopping' ? "買うものを入力..." : activeTab === 'wishes' ? "やりたい事を入力..." : activeTab === 'travel' ? "旅行の行き先を入力..." : "イベント名を入力..."}
-                                value={inputText}
-                                onChange={(e) => setInputText(e.target.value)}
-                                className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                            />
+                            {activeTab === 'cleaning' ? (
+                                <>
+                                    <input
+                                        type="text"
+                                        placeholder="掃除箇所（例：換気扇、お風呂など）"
+                                        value={inputPlace}
+                                        onChange={(e) => setInputPlace(e.target.value)}
+                                        className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    />
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="text-[10px] text-slate-500 block mb-1">担当者</label>
+                                            <select
+                                                value={inputAssignee}
+                                                onChange={(e) => setInputAssignee(e.target.value)}
+                                                className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                            >
+                                                <option value="パパ">パパ</option>
+                                                <option value="ママ">ママ</option>
+                                                <option value="ふたり">ふたり</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] text-slate-500 block mb-1">期限</label>
+                                            <input
+                                                type="date"
+                                                value={inputDate}
+                                                onChange={(e) => setInputDate(e.target.value)}
+                                                className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                            />
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <input
+                                        type="text"
+                                        placeholder={
+                                            activeTab === 'daily' ? "買う日用品を入力（例：ティッシュ）" :
+                                            activeTab === 'wishes' ? "欲しいものを入力（例：カメラ）" :
+                                            activeTab === 'travel' ? "旅行の行き先を入力..." : "イベント名を入力..."
+                                        }
+                                        value={inputText}
+                                        onChange={(e) => setInputText(e.target.value)}
+                                        className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    />
 
-                            {(activeTab === 'travel' || activeTab === 'events') && (
-                                <input
-                                    type="date"
-                                    value={inputDate}
-                                    onChange={(e) => setInputDate(e.target.value)}
-                                    className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                />
-                            )}
+                                    {(activeTab === 'travel' || activeTab === 'events') && (
+                                        <input
+                                            type="date"
+                                            value={inputDate}
+                                            onChange={(e) => setInputDate(e.target.value)}
+                                            className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        />
+                                    )}
 
-                            {(activeTab === 'travel' || activeTab === 'events' || activeTab === 'wishes') && (
-                                <input
-                                    type="text"
-                                    placeholder="メモ（任意）"
-                                    value={inputMemo}
-                                    onChange={(e) => setInputMemo(e.target.value)}
-                                    className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                />
+                                    {(activeTab === 'travel' || activeTab === 'events' || activeTab === 'wishes') && (
+                                        <input
+                                            type="text"
+                                            placeholder="メモ（任意）"
+                                            value={inputMemo}
+                                            onChange={(e) => setInputMemo(e.target.value)}
+                                            className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        />
+                                    )}
+                                </>
                             )}
 
                             <button
@@ -190,7 +241,8 @@
                                         className="flex items-start justify-between p-3 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-slate-300 transition"
                                     >
                                         <div className="flex items-start gap-3 flex-1">
-                                            {(activeTab === 'shopping' || activeTab === 'wishes') && (
+                                            {/* チェックボックス（掃除・日用品・買いたいもの用） */}
+                                            {(activeTab === 'daily' || activeTab === 'wishes' || activeTab === 'cleaning') && (
                                                 <input
                                                     type="checkbox"
                                                     checked={item.completed}
@@ -198,15 +250,30 @@
                                                     className="mt-1 w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
                                                 />
                                             )}
+                                            
                                             <div className="flex-1">
-                                                <p className={`text-sm font-medium ${item.completed ? 'line-through text-slate-400' : 'text-slate-800'}`}>
-                                                    {item.text}
-                                                </p>
-                                                {item.date && (
-                                                    <p className="text-xs text-indigo-600 font-semibold mt-0.5">📅 {item.date}</p>
-                                                )}
-                                                {item.memo && (
-                                                    <p className="text-xs text-slate-500 mt-0.5">{item.memo}</p>
+                                                {activeTab === 'cleaning' ? (
+                                                    <div>
+                                                        <p className={`text-sm font-medium ${item.completed ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                                                            🧹 {item.place}
+                                                        </p>
+                                                        <div className="flex gap-3 mt-1 text-xs">
+                                                            <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-medium">担当: {item.assignee}</span>
+                                                            <span className="text-slate-500 self-center">📅 期限: {item.date}</span>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div>
+                                                        <p className={`text-sm font-medium ${item.completed ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                                                            {item.text}
+                                                        </p>
+                                                        {item.date && (
+                                                            <p className="text-xs text-indigo-600 font-semibold mt-0.5">📅 {item.date}</p>
+                                                        )}
+                                                        {item.memo && (
+                                                            <p className="text-xs text-slate-500 mt-0.5">{item.memo}</p>
+                                                        )}
+                                                    </div>
                                                 )}
                                             </div>
                                         </div>
