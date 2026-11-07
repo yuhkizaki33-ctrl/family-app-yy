@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>家族情報共有アプリ（同期版）</title>
+    <title>家族情報共有アプリ</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
@@ -18,9 +18,7 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        // ==========================================
-        // ▼ ここにJSONBinの情報を正しく貼り付けてください ▼
-        // ==========================================
+        // ▼ JSONBinの情報をここに設定してください ▼
         const BIN_ID = "6aef1b3bffd5d16053aedd5a"; 
         const MASTER_KEY = "$2a$10$R9tRX4UbOa39q8AVRyQ/r.WvHdmrVwXZgaBKKUBQnZZ5uYGWIQDoO";
 
@@ -37,14 +35,13 @@
                 events: []
             });
 
-            // 入力用フォームの状態
             const [inputText, setInputText] = useState('');
             const [inputDate, setInputDate] = useState('');
             const [inputMemo, setInputMemo] = useState('');
             const [inputAssignee, setInputAssignee] = useState('パパ');
             const [inputPlace, setInputPlace] = useState('');
 
-            // サーバーからデータを取得（同期）
+            // サーバーからデータを取得
             const fetchData = async () => {
                 if (!BIN_ID || BIN_ID.includes("ここ")) return;
                 try {
@@ -62,16 +59,15 @@
                 }
             };
 
-            // 初回読み込み ＆ 5秒ごとに自動同期
             useEffect(() => {
                 fetchData();
                 const interval = setInterval(fetchData, 5000);
                 return () => clearInterval(interval);
             }, []);
 
-            // サーバーへデータを保存・更新する関数
+            // サーバーへデータを保存
             const saveToServer = async (newData) => {
-                setData(newData); // 画面を即座に更新
+                setData(newData);
                 if (!BIN_ID || BIN_ID.includes("ここ")) return;
 
                 setIsLoading(true);
@@ -91,7 +87,6 @@
                 }
             };
 
-            // アイテム追加
             const handleAddItem = (e) => {
                 e.preventDefault();
                 
@@ -127,7 +122,6 @@
                 setInputMemo('');
             };
 
-            // チェック切り替え
             const toggleComplete = (id) => {
                 const updatedData = {
                     ...data,
@@ -138,7 +132,6 @@
                 saveToServer(updatedData);
             };
 
-            // アイテム削除
             const handleDelete = (id) => {
                 const updatedData = {
                     ...data,
@@ -157,14 +150,12 @@
 
             return (
                 <div className="min-h-screen flex flex-col max-w-md mx-auto bg-white shadow-xl">
-                    {/* ヘッダー */}
                     <header className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white p-4 shadow-md flex justify-between items-center">
                         <div>
                             <h1 className="text-lg font-bold tracking-wide">🏠 家族共有アプリ</h1>
                             {isLoading && <span className="text-[10px] text-indigo-200">同期中...</span>}
                         </div>
                         
-                        {/* アカウント切り替えスイッチ */}
                         <div className="flex items-center bg-indigo-900/40 p-1 rounded-lg border border-indigo-400/30">
                             <span className="text-[10px] px-1 text-indigo-200">使用者:</span>
                             <button
@@ -182,7 +173,6 @@
                         </div>
                     </header>
 
-                    {/* タブナビゲーション */}
                     <nav className="grid grid-cols-5 bg-slate-100 p-1 border-b border-slate-200 text-center">
                         {Object.keys(tabConfig).map(tabKey => {
                             const isActive = activeTab === tabKey;
@@ -202,7 +192,6 @@
                         })}
                     </nav>
 
-                    {/* メインコンテンツ */}
                     <main className="flex-1 p-4 overflow-y-auto pb-24">
                         <div className="flex justify-between items-center mb-3">
                             <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
@@ -214,7 +203,6 @@
                             </span>
                         </div>
 
-                        {/* 入力フォーム */}
                         <form onSubmit={handleAddItem} className="bg-slate-50 p-3 rounded-xl border border-slate-200 mb-4 shadow-sm space-y-3">
                             {activeTab === 'cleaning' ? (
                                 <>
@@ -292,7 +280,6 @@
                             </button>
                         </form>
 
-                        {/* リスト一覧 */}
                         <div className="space-y-2">
                             {(!data[activeTab] || data[activeTab].length === 0) ? (
                                 <p className="text-center text-slate-400 py-8 text-sm">項目はまだありません</p>
@@ -303,7 +290,6 @@
                                        className={`flex items-start justify-between p-3 bg-white border rounded-xl shadow-sm transition ${item.isNew ? 'border-indigo-400 ring-2 ring-indigo-100 bg-indigo-50/20' : 'border-slate-200'}`}
                                     >
                                         <div className="flex items-start gap-3 flex-1">
-                                            {/* チェックボックス */}
                                             {(activeTab === 'daily' || activeTab === 'wishes' || activeTab === 'cleaning') && (
                                                 <input
                                                     type="checkbox"
