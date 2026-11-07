@@ -18,7 +18,9 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        // ▼ JSONBinの情報をここに設定してください ▼
+        // ==========================================
+        // ▼ BIN_IDは空欄のままで、MASTER_KEYだけ入力します ▼
+        // ==========================================
         const BIN_ID = ""; 
         const MASTER_KEY = "$2a$10$R9tRX4UbOa39q8AVRyQ/r.WvHdmrVwXZgaBKKUBQnZZ5uYGWIQDoO";
 
@@ -26,6 +28,9 @@
             const [activeTab, setActiveTab] = useState('daily');
             const [currentUser, setCurrentUser] = useState('パパ');
             const [isLoading, setIsLoading] = useState(false);
+            const [currentBinId, setCurrentBinId] = useState(() => {
+                return localStorage.getItem('family_app_bin_id') || BIN_ID;
+            });
 
             const [data, setData] = useState({
                 daily: [],
@@ -41,11 +46,12 @@
             const [inputAssignee, setInputAssignee] = useState('パパ');
             const [inputPlace, setInputPlace] = useState('');
 
-            // サーバーからデータを取得
-            const fetchData = async () => {
-                if (!BIN_ID || BIN_ID.includes("ここ")) return;
+            // サーバー（JSONBin）からデータを取得する
+            const fetchData = async (binIdToFetch) => {
+                const targetId = binIdToFetch || currentBinId;
+                if (!targetId) return;
                 try {
-                    const response = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
+                    const response = await fetch(`https://api.jsonbin.io/v3/b/${targetId}/latest`, {
                         headers: {
                             'X-Master-Key': MASTER_KEY
                         }
@@ -59,20 +65,64 @@
                 }
             };
 
+            // 初回起動時：もしBIN_IDが空なら自動で新しいBinを作る
             useEffect(() => {
-                fetchData();
-                const interval = setInterval(fetchData, 5000);
-                return () => clearInterval(interval);
-            }, []);
+                const initBin = async () => {
+                    let activeId = currentBinId;
+                    if (!activeId) {
+                        // 新しいBinを自動作成
+                        try {
+                            setIsLoading(true);
+                            const response = await fetch('https://api.jsonbin.io/v3/b', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-Master-Key': MASTER_KEY,
+                                    'X-Bin-Name': 'FamilyApp_Data'
+                                },
+                                body: JSON.stringify({
+                                    daily: [],
+                                    wishes: [],
+                                    cleaning: [],
+                                    travel: [],
+                                    events: []
+                                })
+                            });
+                            const res = await response.json();
+                            if (res && res.metadata && res.metadata.id) {
+                                activeId = res.metadata.id;
+                                setCurrentBinId(activeId);
+                                localStorage.setItem('family_app_bin_id', activeId);
+                            }
+                        } catch (e) {
+                            console.error("自動作成に失敗しました", e);
+                        } finally {
+                            setIsLoading(false);
+                        }
+                    }
 
-            // サーバーへデータを保存
+                    if (activeId) {
+                        fetchData(activeId);
+                    }
+                };
+
+                initBin();
+
+                // 5秒ごとに自動で最新情報を取得（同期）
+                const interval = setInterval(() => {
+                    if (currentBinId) fetchData(currentBinId);
+                }, 5000);
+                return () => clearInterval(interval);
+            }, [currentBinId]);
+
+            // サーバーへデータを保存・更新する
             const saveToServer = async (newData) => {
-                setData(newData);
-                if (!BIN_ID || BIN_ID.includes("ここ")) return;
+                setData(newData); // 自分の画面を即座に更新
+                if (!currentBinId) return;
 
                 setIsLoading(true);
                 try {
-                    await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
+                    await fetch(`https://api.jsonbin.io/v3/b/${currentBinId}`, {
                         method: 'PUT',
                         headers: {
                             'Content-Type': 'application/json',
