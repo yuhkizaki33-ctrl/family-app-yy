@@ -1,609 +1,302 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>家族情報共有アプリ（Supabase同期版）</title>
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React & ReactDOM -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel for JSX -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Supabase JS Client -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>家族情報共有アプリ（Supabase同期版）</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased">
-    <div id="root"></div>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
 
-    <script type="text/babel">
-        const { useState, useEffect } = React;
+// ===== Supabase設定（修正：URLは末尾の /rest/v1/ なし） =====
+const SUPABASE_URL = "https://jltgpvkwodviqvhcmptw.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_c3crBelg_3iI0ICIjaMX4w_Xw8uav2o";
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // ==========================================
-        // 🔑 Supabaseの設定情報をここに貼り付けてください
-        // ==========================================
-        const SUPABASE_URL = "https://jltgpvkwodviqvhcmptw.supabase.co/rest/v1/";       // 例: "https://abcdef.supabase.co"
-        const SUPABASE_ANON_KEY = "sb_publishable_c3crBelg_3iI0ICIjaMX4w_Xw8uav2o"; // 例: "eyJhG..."
+const ONE_WEEK = 7 * 24 * 60 * 60 * 1000;
+const ONE_DAY = 24 * 60 * 60 * 1000;
+const emptySpot = () => ({ name: '', transport: '', time: '', memo: '' });
+const initialData = {
+  daily: [{ id: 101, text: "牛乳（1L）", completed: false, author: "ママ", purchasedAt: null }],
+  wishes: [], goal: [], cleaning: [], travel: [], events: []
+};
+const tabConfig = {
+  daily: { label: '日用品', color: 'bg-amber-500' },
+  wishes: { label: '購入希望', color: 'bg-rose-500' },
+  goal: { label: 'やりたい事', color: 'bg-purple-500' },
+  cleaning: { label: '家の掃除', color: 'bg-teal-500' },
+  travel: { label: '旅行', color: 'bg-sky-500' },
+  events: { label: '瑠華情報', color: 'bg-emerald-500' }
+};
+const inputCls = "w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500";
+const smallCls = "w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500";
 
-        const supabaseClient = (SUPABASE_URL !== "https://jltgpvkwodviqvhcmptw.supabase.co/rest/v1/" && SUPABASE_ANON_KEY !== "sb_publishable_c3crBelg_3iI0ICIjaMX4w_Xw8uav2o")
-            ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-            : null;
+// 1週間経過した購入済み日用品を除去
+function cleanDaily(d) {
+  const now = Date.now();
+  return { ...d, daily: (d.daily || []).filter(i => !(i.completed && i.purchasedAt && now - i.purchasedAt >= ONE_WEEK)) };
+}
 
-        function App() {
-            const initialData = {
-                daily: [
-                    { id: 101, text: "牛乳（1L）", completed: false, author: "ママ", isNew: false, purchasedAt: null }
-                ],
-                wishes: [],
-                goal: [],
-                cleaning: [],
-                travel: [],
-                events: []
-            };
+function Badge({ author }) {
+  return <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${author === 'パパ' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'}`}>{author}</span>;
+}
 
-            const [activeTab, setActiveTab] = useState('daily');
-            const [currentUser, setCurrentUser] = useState('パパ');
-            const [data, setData] = useState(initialData);
-            const [isSyncing, setIsSyncing] = useState(false);
+function App() {
+  const [activeTab, setActiveTab] = useState('daily');
+  const [currentUser, setCurrentUser] = useState('パパ');
+  const [data, setData] = useState(initialData);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [error, setError] = useState('');
 
-            // Supabaseからデータを取得 ＆ リアルタイム購読（Realtime）のセットアップ
-            useEffect(() => {
-                if (!supabaseClient) return;
+  const [f, setF] = useState({ text: '', date: '', memo: '', notes: '', steps: '', assignee: 'パパ', place: '', travelTitle: '' });
+  const [spots, setSpots] = useState([emptySpot()]);
+  const set = (k) => (e) => setF(p => ({ ...p, [k]: e.target.value }));
 
-                const fetchAppData = async () => {
-                    setIsSyncing(true);
-                    const { data: rows, error } = await supabaseClient
-                        .from('family_data')
-                        .select('*')
-                        .eq('id', 1)
-                        .single();
+  useEffect(() => {
+    const fetchAppData = async () => {
+      setIsSyncing(true);
+      const { data: row, error: err } = await supabaseClient.from('family_data').select('*').eq('id', 1).maybeSingle();
+      if (err) { setError('読み込みエラー: ' + err.message); }
+      else if (row && row.content) { setData({ ...initialData, ...cleanDaily(row.content) }); }
+      else {
+        const { error: e2 } = await supabaseClient.from('family_data').upsert({ id: 1, content: initialData });
+        if (e2) setError('初期保存エラー: ' + e2.message);
+      }
+      setIsSyncing(false);
+    };
+    fetchAppData();
 
-                    if (rows && rows.content) {
-                        let parsed = rows.content;
-                        // 日用品の1週間自動消去チェック
-                        const now = Date.now();
-                        const oneWeek = 7 * 24 * 60 * 60 * 1000;
-                        if (parsed.daily) {
-                            parsed.daily = parsed.daily.filter(item => {
-                                if (item.completed && item.purchasedAt) {
-                                    return (now - item.purchasedAt) < oneWeek;
-                                }
-                                return true;
-                            });
-                        }
-                        setData(parsed);
-                    } else {
-                        // 初回：データがなければ初期データを登録
-                        await supabaseClient
-                            .from('family_data')
-                            .upsert({ id: 1, content: initialData });
-                    }
-                    setIsSyncing(false);
-                };
+    const channel = supabaseClient
+      .channel('public:family_data')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'family_data' }, (payload) => {
+        if (payload.new && payload.new.content) setData({ ...initialData, ...payload.new.content });
+      })
+      .subscribe();
+    return () => { supabaseClient.removeChannel(channel); };
+  }, []);
 
-                fetchAppData();
+  const save = async (newData) => {
+    setData(newData);
+    setIsSyncing(true);
+    const { error: err } = await supabaseClient.from('family_data').upsert({ id: 1, content: newData });
+    setError(err ? '保存エラー: ' + err.message : '');
+    setIsSyncing(false);
+  };
 
-                // リアルタイム同期：相手が変更したら自動で画面を更新する
-                const channel = supabaseClient
-                    .channel('public:family_data')
-                    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'family_data' }, (payload) => {
-                        if (payload.new && payload.new.content) {
-                            setData(payload.new.content);
-                        }
-                    })
-                    .subscribe();
+  const handleAdd = (e) => {
+    e.preventDefault();
+    const item = { id: Date.now(), completed: false, author: currentUser };
+    const t = f.text.trim();
+    if (activeTab === 'daily') { if (!t) return; item.text = t; item.purchasedAt = null; }
+    else if (activeTab === 'wishes') { if (!t) return; item.text = t; item.notes = f.notes.trim(); }
+    else if (activeTab === 'goal') { if (!t) return; item.text = t; item.steps = f.steps.split('\n').filter(s => s.trim()); }
+    else if (activeTab === 'cleaning') { if (!f.place.trim()) return; item.place = f.place.trim(); item.assignee = f.assignee; item.date = f.date || '期限なし'; }
+    else if (activeTab === 'travel') { if (!f.travelTitle.trim()) return; item.title = f.travelTitle.trim(); item.spots = spots.filter(s => s.name.trim()); }
+    else if (activeTab === 'events') { if (!t) return; item.text = t; item.date = f.date; item.memo = f.memo.trim(); }
+    save({ ...data, [activeTab]: [item, ...(data[activeTab] || [])] });
+    setF({ text: '', date: '', memo: '', notes: '', steps: '', assignee: 'パパ', place: '', travelTitle: '' });
+    setSpots([emptySpot()]);
+  };
 
-                return () => {
-                    supabaseClient.removeChannel(channel);
-                };
-            }, []);
+  const toggleComplete = (id) => {
+    const now = Date.now();
+    const list = (data[activeTab] || []).map(item => {
+      if (item.id !== id) return item;
+      const completed = !item.completed;
+      return activeTab === 'daily' ? { ...item, completed, purchasedAt: completed ? now : null } : { ...item, completed };
+    });
+    save({ ...data, [activeTab]: list });
+  };
 
-            // 変更をSupabaseへ保存する関数
-            const saveToSupabase = async (newData) => {
-                setData(newData); // 画面を即時反映
-                if (!supabaseClient) return;
+  const handleDelete = (id) => save({ ...data, [activeTab]: (data[activeTab] || []).filter(i => i.id !== id) });
 
-                setIsSyncing(true);
-                await supabaseClient
-                    .from('family_data')
-                    .upsert({ id: 1, content: newData });
-                setIsSyncing(false);
-            };
+  // 「NEW」：相手が24時間以内に追加した未完了項目のみ（保存データに依存しない）
+  const isNew = (item) => item.author !== currentUser && !item.completed && Date.now() - item.id < ONE_DAY;
 
-            // 入力用フォームの状態
-            const [inputText, setInputText] = useState('');
-            const [inputDate, setInputDate] = useState('');
-            const [inputMemo, setInputMemo] = useState('');
-            const [inputNotes, setInputNotes] = useState('');
-            const [inputSteps, setInputSteps] = useState('');
-            const [inputAssignee, setInputAssignee] = useState('パパ');
-            const [inputPlace, setInputPlace] = useState('');
-            
-            const [inputTravelTitle, setInputTravelTitle] = useState('');
-            const [travelSpots, setTravelSpots] = useState([{ name: '', transport: '', time: '', memo: '' }]);
+  const Row = ({ item, children, checkbox }) => (
+    <div className={`flex items-start justify-between p-3 border rounded-xl shadow-sm transition ${item.completed && activeTab === 'daily' ? 'bg-slate-50 border-slate-200 opacity-75' : isNew(item) ? 'bg-indigo-50/20 border-indigo-400 ring-2 ring-indigo-100' : 'bg-white border-slate-200'}`}>
+      <div className="flex items-start gap-3 flex-1">
+        {checkbox && <input type="checkbox" checked={!!item.completed} onChange={() => toggleComplete(item.id)} className="mt-1 w-4 h-4 cursor-pointer" />}
+        <div className="flex-1">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            {isNew(item) && <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded animate-pulse">NEW</span>}
+            <Badge author={item.author} />
+          </div>
+          {children}
+        </div>
+      </div>
+      <button onClick={() => handleDelete(item.id)} className="text-slate-400 hover:text-rose-500 p-1 text-sm transition" title="削除">✕</button>
+    </div>
+  );
 
-            const handleAddSpotField = () => {
-                setTravelSpots(prev => [...prev, { name: '', transport: '', time: '', memo: '' }]);
-            };
+  const empty = (msg) => <p className="text-center text-slate-400 py-6 text-xs bg-white rounded-xl border border-slate-200">{msg}</p>;
+  const list = data[activeTab] || [];
 
-            const handleSpotChange = (index, field, value) => {
-                const updated = [...travelSpots];
-                updated[index][field] = value;
-                setTravelSpots(updated);
-            };
+  return (
+    <div className="min-h-screen flex flex-col max-w-md mx-auto bg-white shadow-xl relative">
+      {isSyncing && <div className="absolute top-2 right-2 bg-indigo-600 text-white text-[10px] px-2 py-0.5 rounded-full shadow animate-pulse z-50">同期中...</div>}
 
-            const handleRemoveSpotField = (index) => {
-                setTravelSpots(travelSpots.filter((_, i) => i !== index));
-            };
+      <header className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white p-4 shadow-md flex justify-between items-center">
+        <h1 className="text-base font-bold tracking-wide">🏠 家族情報共有</h1>
+        <div className="flex items-center bg-indigo-900/40 p-1 rounded-lg border border-indigo-400/30">
+          <span className="text-[10px] px-1 text-indigo-200">使用者:</span>
+          {['パパ', 'ママ'].map(u => (
+            <button key={u} onClick={() => setCurrentUser(u)} className={`px-2.5 py-1 text-xs font-bold rounded-md transition ${currentUser === u ? 'bg-white text-indigo-700 shadow-sm' : 'text-white hover:text-indigo-200'}`}>{u}</button>
+          ))}
+        </div>
+      </header>
 
-            // アイテム追加
-            const handleAddItem = (e) => {
-                e.preventDefault();
-                let newItem = { 
-                    id: Date.now(), 
-                    completed: false, 
-                    author: currentUser,
-                    isNew: true 
-                };
+      {error && <div className="bg-rose-50 text-rose-700 text-xs p-2 border-b border-rose-200">⚠ {error}</div>}
 
-                if (activeTab === 'daily') {
-                    if (!inputText.trim()) return;
-                    newItem.text = inputText.trim();
-                    newItem.purchasedAt = null;
-                } else if (activeTab === 'wishes') {
-                    if (!inputText.trim()) return;
-                    newItem.text = inputText.trim();
-                    newItem.notes = inputNotes.trim();
-                } else if (activeTab === 'goal') {
-                    if (!inputText.trim()) return;
-                    newItem.text = inputText.trim();
-                    newItem.steps = inputSteps.split('\n').filter(s => s.trim() !== '');
-                } else if (activeTab === 'cleaning') {
-                    if (!inputPlace.trim()) return;
-                    newItem.place = inputPlace.trim();
-                    newItem.assignee = inputAssignee;
-                    newItem.date = inputDate || '期限なし';
-                } else if (activeTab === 'travel') {
-                    if (!inputTravelTitle.trim()) return;
-                    newItem.title = inputTravelTitle.trim();
-                    newItem.spots = travelSpots.filter(s => s.name.trim() !== '');
-                } else if (activeTab === 'events') {
-                    if (!inputText.trim()) return;
-                    newItem.text = inputText.trim();
-                    newItem.date = inputDate;
-                    newItem.memo = inputMemo.trim();
-                }
+      <nav className="grid grid-cols-6 bg-slate-100 p-1 border-b border-slate-200 text-center">
+        {Object.keys(tabConfig).map(k => (
+          <button key={k} onClick={() => setActiveTab(k)} className={`py-2 px-0.5 text-[10px] font-semibold rounded-lg transition-all ${activeTab === k ? 'bg-white text-indigo-600 shadow-sm font-bold' : 'text-slate-600 hover:text-slate-900'}`}>{tabConfig[k].label}</button>
+        ))}
+      </nav>
 
-                const updatedData = {
-                    ...data,
-                    [activeTab]: [newItem, ...(data[activeTab] || [])]
-                };
-                saveToSupabase(updatedData);
+      <main className="flex-1 p-4 overflow-y-auto pb-24">
+        <div className="flex justify-between items-center mb-3">
+          <h2 className="text-base font-bold flex items-center gap-2">
+            <span className={`w-3 h-3 rounded-full ${tabConfig[activeTab].color}`}></span>{tabConfig[activeTab].label}リスト
+          </h2>
+          <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">✎ 投稿者: <strong className="text-indigo-600">{currentUser}</strong></span>
+        </div>
 
-                // フォームリセット
-                setInputText('');
-                setInputPlace('');
-                setInputDate('');
-                setInputMemo('');
-                setInputNotes('');
-                setInputSteps('');
-                setInputTravelTitle('');
-                setTravelSpots([{ name: '', transport: '', time: '', memo: '' }]);
-            };
+        <form onSubmit={handleAdd} className="bg-slate-50 p-3 rounded-xl border border-slate-200 mb-4 shadow-sm space-y-3">
+          {activeTab === 'daily' && <input type="text" placeholder="買う日用品を入力（例：ティッシュ）" value={f.text} onChange={set('text')} className={inputCls} />}
+          {activeTab === 'wishes' && <>
+            <input type="text" placeholder="欲しいもの・購入希望を入力" value={f.text} onChange={set('text')} className={inputCls} />
+            <textarea placeholder="悩んでいることや結論のまとめスペース" value={f.notes} onChange={set('notes')} className={inputCls + " h-20"} />
+          </>}
+          {activeTab === 'goal' && <>
+            <input type="text" placeholder="やりたい事を入力（例：家族旅行）" value={f.text} onChange={set('text')} className={inputCls} />
+            <textarea placeholder="達成までに必要な項目（1行につき1つ入力）" value={f.steps} onChange={set('steps')} className={inputCls + " h-20"} />
+          </>}
+          {activeTab === 'cleaning' && <>
+            <input type="text" placeholder="掃除箇所（例：換気扇、お風呂など）" value={f.place} onChange={set('place')} className={inputCls} />
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[10px] text-slate-500 block mb-1">担当者</label>
+                <select value={f.assignee} onChange={set('assignee')} className={inputCls}>
+                  <option value="パパ">パパ</option><option value="ママ">ママ</option><option value="ふたり">ふたり</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] text-slate-500 block mb-1">期限</label>
+                <input type="date" value={f.date} onChange={set('date')} className={inputCls} />
+              </div>
+            </div>
+          </>}
+          {activeTab === 'travel' && (
+            <div className="space-y-3">
+              <input type="text" placeholder="旅行のタイトル（例：春の箱根・小田原旅行）" value={f.travelTitle} onChange={set('travelTitle')} className={inputCls + " font-bold"} />
+              <div className="border-t border-slate-200 pt-2">
+                <label className="text-xs font-bold text-slate-600 block mb-2">📍 訪問する目的地（複数スポット）</label>
+                {spots.map((spot, i) => (
+                  <div key={i} className="bg-white p-2.5 rounded-lg border border-slate-200 mb-2 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-bold text-indigo-600">スポット #{i + 1}</span>
+                      {spots.length > 1 && <button type="button" onClick={() => setSpots(spots.filter((_, j) => j !== i))} className="text-slate-400 hover:text-rose-500 text-xs px-1">✕ 削除</button>}
+                    </div>
+                    <input type="text" placeholder="目的地・スポット名" value={spot.name} onChange={(e) => setSpots(spots.map((s, j) => j === i ? { ...s, name: e.target.value } : s))} className={smallCls} />
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <input type="text" placeholder="移動方法" value={spot.transport} onChange={(e) => setSpots(spots.map((s, j) => j === i ? { ...s, transport: e.target.value } : s))} className={smallCls} />
+                      <input type="text" placeholder="時間" value={spot.time} onChange={(e) => setSpots(spots.map((s, j) => j === i ? { ...s, time: e.target.value } : s))} className={smallCls} />
+                    </div>
+                    <input type="text" placeholder="備考・メモ" value={spot.memo} onChange={(e) => setSpots(spots.map((s, j) => j === i ? { ...s, memo: e.target.value } : s))} className={smallCls} />
+                  </div>
+                ))}
+                <button type="button" onClick={() => setSpots([...spots, emptySpot()])} className="w-full py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded transition">＋ 別の目的地スポットを追加する</button>
+              </div>
+            </div>
+          )}
+          {activeTab === 'events' && <>
+            <input type="text" placeholder="瑠華情報のタイトル（例：予防接種）" value={f.text} onChange={set('text')} className={inputCls} />
+            <div>
+              <label className="text-[10px] text-slate-500 block mb-1">期日</label>
+              <input type="date" value={f.date} onChange={set('date')} className={inputCls} />
+            </div>
+            <textarea placeholder="情報の詳細（メモなど）" value={f.memo} onChange={set('memo')} className={inputCls + " h-16"} />
+          </>}
+          <button type="submit" className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm rounded-lg transition shadow-sm">【{currentUser}】として追加する</button>
+        </form>
 
-            // チェック切り替え
-            const toggleComplete = (id) => {
-                const now = Date.now();
-                const updatedList = (data[activeTab] || []).map(item => {
-                    if (item.id === id) {
-                        const nextCompleted = !item.completed;
-                        return { 
-                            ...item, 
-                            completed: nextCompleted, 
-                            isNew: false,
-                            purchasedAt: (activeTab === 'daily' && nextCompleted) ? now : (activeTab === 'daily' ? null : item.purchasedAt)
-                        };
-                    }
-                    return item;
-                });
-
-                saveToSupabase({
-                    ...data,
-                    [activeTab]: updatedList
-                });
-            };
-
-            // アイテム削除
-            const handleDelete = (id) => {
-                saveToSupabase({
-                    ...data,
-                    [activeTab]: (data[activeTab] || []).filter(item => item.id !== id)
-                });
-            };
-
-            const tabConfig = {
-                daily: { label: '日用品', color: 'bg-amber-500' },
-                wishes: { label: '購入希望', color: 'bg-rose-500' },
-                goal: { label: 'やりたい事', color: 'bg-purple-500' },
-                cleaning: { label: '家の掃除', color: 'bg-teal-500' },
-                travel: { label: '旅行', color: 'bg-sky-500' },
-                events: { label: '瑠華情報', color: 'bg-emerald-500' }
-            };
-
-            return (
-                <div className="min-h-screen flex flex-col max-w-md mx-auto bg-white shadow-xl relative">
-                    {/* 同期ステータス表示 */}
-                    {isSyncing && (
-                        <div className="absolute top-2 right-2 bg-indigo-600 text-white text-[10px] px-2 py-0.5 rounded-full shadow animate-pulse z-50">
-                            同期中...
-                        </div>
-                    )}
-
-                    {/* ヘッダー */}
-                    <header className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white p-4 shadow-md flex justify-between items-center">
-                        <h1 className="text-base font-bold tracking-wide">🏠 家族情報共有</h1>
-                        <div className="flex items-center bg-indigo-900/40 p-1 rounded-lg border border-indigo-400/30">
-                            <span className="text-[10px] px-1 text-indigo-200">使用者:</span>
-                            <button
-                                onClick={() => setCurrentUser('パパ')}
-                                className={`px-2.5 py-1 text-xs font-bold rounded-md transition ${currentUser === 'パパ' ? 'bg-white text-indigo-700 shadow-sm' : 'text-white hover:text-indigo-200'}`}
-                            >
-                                パパ
-                            </button>
-                            <button
-                                onClick={() => setCurrentUser('ママ')}
-                                className={`px-2.5 py-1 text-xs font-bold rounded-md transition ${currentUser === 'ママ' ? 'bg-white text-indigo-700 shadow-sm' : 'text-white hover:text-indigo-200'}`}
-                            >
-                                ママ
-                            </button>
-                        </div>
-                    </header>
-
-                    {/* タブナビゲーション */}
-                    <nav className="grid grid-cols-6 bg-slate-100 p-1 border-b border-slate-200 text-center">
-                        {Object.keys(tabConfig).map(tabKey => {
-                            const isActive = activeTab === tabKey;
-                            return (
-                                <button
-                                    key={tabKey}
-                                    onClick={() => setActiveTab(tabKey)}
-                                    className={`py-2 px-0.5 text-[10px] font-semibold rounded-lg transition-all flex flex-col items-center justify-center ${
-                                        isActive ? 'bg-white text-indigo-600 shadow-sm font-bold' : 'text-slate-600 hover:text-slate-900'
-                                    }`}
-                                >
-                                    <span>{tabConfig[tabKey].label}</span>
-                                </button>
-                            );
-                        })}
-                    </nav>
-
-                    {/* メインコンテンツ */}
-                    <main className="flex-1 p-4 overflow-y-auto pb-24">
-                        <div className="flex justify-between items-center mb-3">
-                            <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                                <span className={`w-3 h-3 rounded-full ${tabConfig[activeTab].color}`}></span>
-                                {tabConfig[activeTab].label}リスト
-                            </h2>
-                            <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                                ✎ 投稿者: <strong className="text-indigo-600">{currentUser}</strong>
-                            </span>
-                        </div>
-
-                        {/* 入力フォーム */}
-                        <form onSubmit={handleAddItem} className="bg-slate-50 p-3 rounded-xl border border-slate-200 mb-4 shadow-sm space-y-3">
-                            {activeTab === 'daily' && (
-                                <input
-                                    type="text"
-                                    placeholder="買う日用品を入力（例：ティッシュ）"
-                                    value={inputText}
-                                    onChange={(e) => setInputText(e.target.value)}
-                                    className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                />
-                            )}
-                            {activeTab === 'wishes' && (
-                                <>
-                                    <input
-                                        type="text"
-                                        placeholder="欲しいもの・購入希望を入力"
-                                        value={inputText}
-                                        onChange={(e) => setInputText(e.target.value)}
-                                        className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                    />
-                                    <textarea
-                                        placeholder="悩んでいることや結論のまとめスペース"
-                                        value={inputNotes}
-                                        onChange={(e) => setInputNotes(e.target.value)}
-                                        className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 h-20"
-                                    />
-                                </>
-                            )}
-                            {activeTab === 'goal' && (
-                                <>
-                                    <input
-                                        type="text"
-                                        placeholder="やりたい事を入力（例：家族旅行）"
-                                        value={inputText}
-                                        onChange={(e) => setInputText(e.target.value)}
-                                        className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                    />
-                                    <textarea
-                                        placeholder="達成までに必要な項目（1行につき1つ入力）"
-                                        value={inputSteps}
-                                        onChange={(e) => setInputSteps(e.target.value)}
-                                        className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 h-20"
-                                    />
-                                </>
-                            )}
-                            {activeTab === 'cleaning' && (
-                                <>
-                                    <input
-                                        type="text"
-                                        placeholder="掃除箇所（例：換気扇、お風呂など）"
-                                        value={inputPlace}
-                                        onChange={(e) => setInputPlace(e.target.value)}
-                                        className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                    />
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div>
-                                            <label className="text-[10px] text-slate-500 block mb-1">担当者</label>
-                                            <select
-                                                value={inputAssignee}
-                                                onChange={(e) => setInputAssignee(e.target.value)}
-                                                className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                            >
-                                                <option value="パパ">パパ</option>
-                                                <option value="ママ">ママ</option>
-                                                <option value="ふたり">ふたり</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="text-[10px] text-slate-500 block mb-1">期限</label>
-                                            <input
-                                                type="date"
-                                                value={inputDate}
-                                                onChange={(e) => setInputDate(e.target.value)}
-                                                className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                            />
-                                        </div>
-                                    </div>
-                                </>
-                            )}
-                            {activeTab === 'travel' && (
-                                <div className="space-y-3">
-                                    <input
-                                        type="text"
-                                        placeholder="旅行のタイトル（例：春の箱根・小田原旅行）"
-                                        value={inputTravelTitle}
-                                        onChange={(e) => setInputTravelTitle(e.target.value)}
-                                        className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
-                                    />
-                                    <div className="border-t border-slate-200 pt-2">
-                                        <label className="text-xs font-bold text-slate-600 block mb-2">📍 訪問する目的地（複数スポット）</label>
-                                        {travelSpots.map((spot, index) => (
-                                            <div key={index} className="bg-white p-2.5 rounded-lg border border-slate-200 mb-2 space-y-2 relative shadow-2xs">
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-[10px] font-bold text-indigo-600">スポット #{index + 1}</span>
-                                                    {travelSpots.length > 1 && (
-                                                        <button type="button" onClick={() => handleRemoveSpotField(index)} className="text-slate-400 hover:text-rose-500 text-xs px-1">✕ 削除</button>
-                                                    )}
-                                                </div>
-                                                <input
-                                                    type="text"
-                                                    placeholder="目的地・スポット名"
-                                                    value={spot.name}
-                                                    onChange={(e) => handleSpotChange(index, 'name', e.target.value)}
-                                                    className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                                />
-                                                <div className="grid grid-cols-2 gap-1.5">
-                                                    <input
-                                                        type="text"
-                                                        placeholder="移動方法"
-                                                        value={spot.transport}
-                                                        onChange={(e) => handleSpotChange(index, 'transport', e.target.value)}
-                                                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                                    />
-                                                    <input
-                                                        type="text"
-                                                        placeholder="時間"
-                                                        value={spot.time}
-                                                        onChange={(e) => handleSpotChange(index, 'time', e.target.value)}
-                                                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                                    />
-                                                </div>
-                                                <input
-                                                    type="text"
-                                                    placeholder="備考・メモ"
-                                                    value={spot.memo}
-                                                    onChange={(e) => handleSpotChange(index, 'memo', e.target.value)}
-                                                    className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                                />
-                                            </div>
-                                        ))}
-                                        <button type="button" onClick={handleAddSpotField} className="w-full py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded transition">
-                                            ＋ 別の目的地スポットを追加する
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-                            {activeTab === 'events' && (
-                                <>
-                                    <input
-                                        type="text"
-                                        placeholder="瑠華情報のタイトル（例：予防接種）"
-                                        value={inputText}
-                                        onChange={(e) => setInputText(e.target.value)}
-                                        className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                    />
-                                    <div>
-                                        <label className="text-[10px] text-slate-500 block mb-1">期日</label>
-                                        <input
-                                            type="date"
-                                            value={inputDate}
-                                            onChange={(e) => setInputDate(e.target.value)}
-                                            className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                        />
-                                    </div>
-                                    <textarea
-                                        placeholder="情報の詳細（メモなど）"
-                                        value={inputMemo}
-                                        onChange={(e) => setInputMemo(e.target.value)}
-                                        className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 h-16"
-                                    />
-                                </>
-                            )}
-                            <button type="submit" className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm rounded-lg transition shadow-sm">
-                                【{currentUser}】として追加する
-                            </button>
-                        </form>
-
-                        {/* リスト一覧表示 */}
-                        {activeTab === 'daily' ? (
-                            <div className="space-y-4">
-                                <div>
-                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">未購入リスト</h3>
-                                    <div className="space-y-2">
-                                        {(!data.daily || data.daily.filter(i => !i.completed).length === 0) ? (
-                                            <p className="text-center text-slate-400 py-4 text-xs bg-white rounded-xl border border-slate-200">買うものはありません</p>
-                                        ) : (
-                                            data.daily.filter(i => !i.completed).map(item => (
-                                                <div key={item.id} className={`flex items-start justify-between p-3 bg-white border rounded-xl shadow-sm transition ${item.isNew ? 'border-indigo-400 ring-2 ring-indigo-100 bg-indigo-50/20' : 'border-slate-200'}`}>
-                                                    <div className="flex items-start gap-3 flex-1">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={item.completed}
-                                                            onChange={() => toggleComplete(item.id)}
-                                                            className="mt-1 w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
-                                                        />
-                                                        <div className="flex-1">
-                                                            <div className="flex items-center gap-2 flex-wrap mb-1">
-                                                                {item.isNew && <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded animate-pulse">NEW</span>}
-                                                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${item.author === 'パパ' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'}`}>{item.author}</span>
-                                                            </div>
-                                                            <p className="text-sm font-medium text-slate-800">{item.text}</p>
-                                                        </div>
-                                                    </div>
-                                                    <button onClick={() => handleDelete(item.id)} className="text-slate-400 hover:text-rose-500 p-1 text-sm transition" title="削除">✕</button>
-                                                </div>
-                                            ))
-                                        )}
-                                    </div>
-                                </div>
-                                <div>
-                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">🛒 購入した枠（1週間で自動消去）</h3>
-                                    <div className="space-y-2">
-                                        {(!data.daily || data.daily.filter(i => i.completed).length === 0) ? (
-                                            <p className="text-center text-slate-400 py-4 text-xs bg-white rounded-xl border border-slate-200">購入済みのものはありません</p>
-                                        ) : (
-                                            data.daily.filter(i => i.completed).map(item => (
-                                                <div key={item.id} className="flex items-start justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl shadow-sm opacity-75">
-                                                    <div className="flex items-start gap-3 flex-1">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={item.completed}
-                                                            onChange={() => toggleComplete(item.id)}
-                                                            className="mt-1 w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
-                                                        />
-                                                        <div className="flex-1">
-                                                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${item.author === 'パパ' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'}`}>{item.author}</span>
-                                                            <p className="text-sm font-medium line-through text-slate-400 mt-1">{item.text}</p>
-                                                        </div>
-                                                    </div>
-                                                    <button onClick={() => handleDelete(item.id)} className="text-slate-400 hover:text-rose-500 p-1 text-sm transition" title="削除">✕</button>
-                                                </div>
-                                            ))
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="space-y-2">
-                                {(!data[activeTab] || data[activeTab].length === 0) ? (
-                                    <p className="text-center text-slate-400 py-8 text-sm bg-white rounded-xl border border-slate-200">項目はまだありません</p>
-                                ) : (
-                                    data[activeTab].map(item => (
-                                        <div key={item.id} className={`flex items-start justify-between p-3 bg-white border rounded-xl shadow-sm transition ${item.isNew ? 'border-indigo-400 ring-2 ring-indigo-100 bg-indigo-50/20' : 'border-slate-200'}`}>
-                                            <div className="flex items-start gap-3 flex-1">
-                                                {activeTab === 'cleaning' && (
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={item.completed}
-                                                        onChange={() => toggleComplete(item.id)}
-                                                        className="mt-1 w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
-                                                    />
-                                                )}
-                                                <div className="flex-1">
-                                                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                                                        {item.isNew && <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded animate-pulse">NEW</span>}
-                                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${item.author === 'パパ' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'}`}>{item.author}</span>
-                                                    </div>
-                                                    {activeTab === 'wishes' && (
-                                                        <div>
-                                                            <p className="text-sm font-bold text-slate-800">{item.text}</p>
-                                                            {item.notes && <div className="mt-2 p-2 bg-amber-50/60 border border-amber-200 rounded-lg text-xs text-slate-700 whitespace-pre-wrap">💡 <strong className="text-amber-800">結論・悩みまとめ:</strong><br/>{item.notes}</div>}
-                                                        </div>
-                                                    )}
-                                                    {activeTab === 'goal' && (
-                                                        <div>
-                                                            <p className="text-sm font-bold text-slate-800">🎯 {item.text}</p>
-                                                            {item.steps && item.steps.length > 0 && (
-                                                                <div className="mt-2 p-2 bg-purple-50/60 border border-purple-200 rounded-lg text-xs text-slate-700">
-                                                                    <strong className="text-purple-800 block mb-1">📋 達成までに必要な項目:</strong>
-                                                                    <ul className="list-disc list-inside space-y-0.5">
-                                                                        {item.steps.map((step, idx) => <li key={idx}>{step}</li>)}
-                                                                    </ul>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                    {activeTab === 'cleaning' && (
-                                                        <div>
-                                                            <p className={`text-sm font-medium ${item.completed ? 'line-through text-slate-400' : 'text-slate-800'}`}>🧹 {item.place}</p>
-                                                            <div className="flex gap-3 mt-1 text-xs">
-                                                                <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-medium">担当: {item.assignee}</span>
-                                                                <span className="text-slate-500 self-center">📅 期限: {item.date}</span>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                    {activeTab === 'travel' && (
-                                                        <div>
-                                                            <p className="text-sm font-bold text-slate-900 mb-2">✈️ {item.title}</p>
-                                                            {item.spots && item.spots.length > 0 && (
-                                                                <div className="space-y-2 border-l-2 border-sky-300 pl-3">
-                                                                    {item.spots.map((spot, idx) => (
-                                                                        <div key={idx} className="bg-sky-50/50 p-2 rounded-lg border border-sky-100 text-xs text-slate-700">
-                                                                            <p className="font-bold text-sky-900">📍 {idx + 1}. {spot.name}</p>
-                                                                            {spot.transport && <p className="mt-0.5">🚗 移動: {spot.transport}</p>}
-                                                                            {spot.time && <p>⏰ 時間: {spot.time}</p>}
-                                                                            {spot.memo && <p className="text-slate-500 mt-1">📝 備考: {spot.memo}</p>}
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                    {activeTab === 'events' && (
-                                                        <div>
-                                                            <p className="text-sm font-bold text-slate-800">📌 {item.text}</p>
-                                                            {item.date && <p className="text-xs text-emerald-600 font-semibold mt-0.5">⏳ 期日: {item.date}</p>}
-                                                            {item.memo && <p className="text-xs text-slate-600 mt-1 p-2 bg-slate-50 rounded border border-slate-100 whitespace-pre-wrap">{item.memo}</p>}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            <button onClick={() => handleDelete(item.id)} className="text-slate-400 hover:text-rose-500 p-1 text-sm transition" title="削除">✕</button>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        )}
-                    </main>
+        {activeTab === 'daily' ? (
+          <div className="space-y-4">
+            {[false, true].map(done => {
+              const items = list.filter(i => !!i.completed === done);
+              return (
+                <div key={String(done)}>
+                  <h3 className="text-xs font-bold text-slate-500 mb-2">{done ? '🛒 購入した枠（1週間で自動消去）' : '未購入リスト'}</h3>
+                  <div className="space-y-2">
+                    {items.length === 0 ? empty(done ? '購入済みのものはありません' : '買うものはありません') :
+                      items.map(item => (
+                        <Row key={item.id} item={item} checkbox>
+                          <p className={`text-sm font-medium ${done ? 'line-through text-slate-400' : ''}`}>{item.text}</p>
+                        </Row>
+                      ))}
+                  </div>
                 </div>
-            );
-        }
+              );
+            })}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {list.length === 0 ? empty('項目はまだありません') : list.map(item => (
+              <Row key={item.id} item={item} checkbox={activeTab === 'cleaning'}>
+                {activeTab === 'wishes' && <div>
+                  <p className="text-sm font-bold">{item.text}</p>
+                  {item.notes && <div className="mt-2 p-2 bg-amber-50/60 border border-amber-200 rounded-lg text-xs whitespace-pre-wrap">💡 <strong className="text-amber-800">結論・悩みまとめ:</strong><br />{item.notes}</div>}
+                </div>}
+                {activeTab === 'goal' && <div>
+                  <p className="text-sm font-bold">🎯 {item.text}</p>
+                  {item.steps && item.steps.length > 0 && <div className="mt-2 p-2 bg-purple-50/60 border border-purple-200 rounded-lg text-xs">
+                    <strong className="text-purple-800 block mb-1">📋 達成までに必要な項目:</strong>
+                    <ul className="list-disc list-inside space-y-0.5">{item.steps.map((s, i) => <li key={i}>{s}</li>)}</ul>
+                  </div>}
+                </div>}
+                {activeTab === 'cleaning' && <div>
+                  <p className={`text-sm font-medium ${item.completed ? 'line-through text-slate-400' : ''}`}>🧹 {item.place}</p>
+                  <div className="flex gap-3 mt-1 text-xs">
+                    <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-medium">担当: {item.assignee}</span>
+                    <span className="text-slate-500 self-center">📅 期限: {item.date}</span>
+                  </div>
+                </div>}
+                {activeTab === 'travel' && <div>
+                  <p className="text-sm font-bold mb-2">✈️ {item.title}</p>
+                  {item.spots && item.spots.length > 0 && <div className="space-y-2 border-l-2 border-sky-300 pl-3">
+                    {item.spots.map((s, i) => (
+                      <div key={i} className="bg-sky-50/50 p-2 rounded-lg border border-sky-100 text-xs">
+                        <p className="font-bold text-sky-900">📍 {i + 1}. {s.name}</p>
+                        {s.transport && <p className="mt-0.5">🚗 移動: {s.transport}</p>}
+                        {s.time && <p>⏰ 時間: {s.time}</p>}
+                        {s.memo && <p className="text-slate-500 mt-1">📝 備考: {s.memo}</p>}
+                      </div>
+                    ))}
+                  </div>}
+                </div>}
+                {activeTab === 'events' && <div>
+                  <p className="text-sm font-bold">📌 {item.text}</p>
+                  {item.date && <p className="text-xs text-emerald-600 font-semibold mt-0.5">⏳ 期日: {item.date}</p>}
+                  {item.memo && <p className="text-xs text-slate-600 mt-1 p-2 bg-slate-50 rounded border border-slate-100 whitespace-pre-wrap">{item.memo}</p>}
+                </div>}
+              </Row>
+            ))}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
 
-        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-    </script>
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
 </body>
-</html>
-
+</html>                                         
