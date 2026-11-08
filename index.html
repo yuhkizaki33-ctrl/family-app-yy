@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>家族情報共有アプリ</title>
+    <title>家族情報共有アプリ（クラウド同期版）</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
@@ -18,60 +18,77 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
+        // 【設定】JSONBinのマスターキーとBin IDをここに設定します
+        const API_KEY = "YOUR_JSON_BIN_KEY"; // ←ここにJSONBinのマスターキーを入れる
+        const BIN_ID = "YOUR_BIN_ID";       // ←初回の保存で作られたBin IDを入れる
+
         function App() {
-            // 初期データ（サンプル）
             const initialData = {
                 daily: [
-                    { id: 101, text: "牛乳（1L）", completed: false, author: "ママ", isNew: false, purchasedAt: null },
-                    { id: 102, text: "卵（1パック）", completed: true, author: "パパ", isNew: false, purchasedAt: Date.now() - 86400000 * 2 }
+                    { id: 101, text: "牛乳（1L）", completed: false, author: "ママ", isNew: false, purchasedAt: null }
                 ],
-                wishes: [
-                    { id: 201, text: "新しいホットプレート", completed: false, author: "ママ", isNew: false, notes: "型番によって値段が違うので要比較。電気代もチェックする。" }
-                ],
-                goal: [
-                    { id: 601, text: "家族でハワイ旅行に行く", steps: ["パスポートの確認・更新", "積立貯金を毎月3万円する", "飛行機とホテルのリサーチ"], completed: false, author: "パパ", isNew: false }
-                ],
-                cleaning: [
-                    { id: 301, place: "お風呂の防カビ燻煙剤", assignee: "パパ", date: "2026-11-15", completed: false, author: "パパ", isNew: false }
-                ],
-                travel: [
-                    { 
-                        id: 401, 
-                        title: "春の箱根・小田原旅行", 
-                        spots: [
-                            { name: "小田原城", transport: "電車（東海道線）", time: "09:00発 ⇒ 10:15着", memo: "天守閣に登る" },
-                            { name: "箱根ガラスの森美術館", transport: "路線バス", time: "11:30発 ⇒ 12:00着", memo: "ランチも併設レストランで食べる" }
-                        ],
-                        author: "パパ", 
-                        isNew: false 
-                    }
-                ],
-                events: [
-                    { id: 501, text: "瑠華の保育園遠足", date: "2026-05-12", memo: "お弁当とおやつの準備", author: "ママ", isNew: false }
-                ]
+                wishes: [],
+                goal: [],
+                cleaning: [],
+                travel: [],
+                events: []
             };
 
             const [activeTab, setActiveTab] = useState('daily');
             const [currentUser, setCurrentUser] = useState('パパ');
+            const [data, setData] = useState(initialData);
+            const [isSyncing, setIsSyncing] = useState(false);
 
-            const [data, setData] = useState(() => {
-                const saved = localStorage.getItem('family_app_data_ultimate');
-                if (!saved) return initialData;
-                const parsed = JSON.parse(saved);
-                
-                // 日用品の1週間自動消去チェック
-                const now = Date.now();
-                const oneWeek = 7 * 24 * 60 * 60 * 1000;
-                if (parsed.daily) {
-                    parsed.daily = parsed.daily.filter(item => {
-                        if (item.completed && item.purchasedAt) {
-                            return (now - item.purchasedAt) < oneWeek;
+            // 起動時にクラウドからデータを取得
+            useEffect(() => {
+                if (BIN_ID && BIN_ID !== "YOUR_BIN_ID") {
+                    fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
+                        headers: { 'X-Master-Key': API_KEY }
+                    })
+                    .then(res => res.json())
+                    .then(resData => {
+                        if (resData && resData.record) {
+                            // 日用品の1週間自動消去チェック
+                            let parsed = resData.record;
+                            const now = Date.now();
+                            const oneWeek = 7 * 24 * 60 * 60 * 1000;
+                            if (parsed.daily) {
+                                parsed.daily = parsed.daily.filter(item => {
+                                    if (item.completed && item.purchasedAt) {
+                                        return (now - item.purchasedAt) < oneWeek;
+                                    }
+                                    return true;
+                                });
+                            }
+                            setData(parsed);
                         }
-                        return true;
-                    });
+                    })
+                    .catch(err => console.log("データ取得エラー:", err));
                 }
-                return parsed;
-            });
+            }, []);
+
+            // データが変更されたらクラウドへ自動保存
+            const saveDataToCloud = (newData) => {
+                setData(newData);
+                if (!API_KEY || API_KEY === "YOUR_JSON_BIN_KEY" || !BIN_ID || BIN_ID === "YOUR_BIN_ID") {
+                    return; // キー未設定時はローカル保存のみのフォールバック
+                }
+
+                setIsSyncing(true);
+                fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Master-Key': API_KEY
+                    },
+                    body: JSON.stringify(newData)
+                })
+                .then(() => setIsSyncing(false))
+                .catch(err => {
+                    console.log("保存エラー:", err);
+                    setIsSyncing(false);
+                });
+            };
 
             // 入力用フォームの状態
             const [inputText, setInputText] = useState('');
@@ -82,28 +99,19 @@
             const [inputAssignee, setInputAssignee] = useState('パパ');
             const [inputPlace, setInputPlace] = useState('');
             
-            // 旅行リスト用（複数スポット対応）
             const [inputTravelTitle, setInputTravelTitle] = useState('');
             const [travelSpots, setTravelSpots] = useState([{ name: '', transport: '', time: '', memo: '' }]);
 
-            // データ変更時にローカルストレージへ保存
-            useEffect(() => {
-                localStorage.setItem('family_app_data_ultimate', JSON.stringify(data));
-            }, [data]);
-
-            // 旅行スポットの入力欄を追加する
             const handleAddSpotField = () => {
                 setTravelSpots(prev => [...prev, { name: '', transport: '', time: '', memo: '' }]);
             };
 
-            // 旅行スポットの入力値を変更する
             const handleSpotChange = (index, field, value) => {
                 const updated = [...travelSpots];
                 updated[index][field] = value;
                 setTravelSpots(updated);
             };
 
-            // 旅行スポットの入力欄を削除する
             const handleRemoveSpotField = (index) => {
                 setTravelSpots(travelSpots.filter((_, i) => i !== index));
             };
@@ -111,7 +119,6 @@
             // アイテム追加
             const handleAddItem = (e) => {
                 e.preventDefault();
-                
                 let newItem = { 
                     id: Date.now(), 
                     completed: false, 
@@ -147,10 +154,11 @@
                     newItem.memo = inputMemo.trim();
                 }
 
-                setData(prev => ({
-                    ...prev,
-                    [activeTab]: [newItem, ...prev[activeTab]]
-                }));
+                const updatedData = {
+                    ...data,
+                    [activeTab]: [newItem, ...data[activeTab]]
+                };
+                saveDataToCloud(updatedData);
 
                 // フォームリセット
                 setInputText('');
@@ -166,29 +174,31 @@
             // チェック切り替え
             const toggleComplete = (id) => {
                 const now = Date.now();
-                setData(prev => ({
-                    ...prev,
-                    [activeTab]: prev[activeTab].map(item => {
-                        if (item.id === id) {
-                            const nextCompleted = !item.completed;
-                            return { 
-                                ...item, 
-                                completed: nextCompleted, 
-                                isNew: false,
-                                purchasedAt: (activeTab === 'daily' && nextCompleted) ? now : (activeTab === 'daily' ? null : item.purchasedAt)
-                            };
-                        }
-                        return item;
-                    })
-                }));
+                const updatedList = data[activeTab].map(item => {
+                    if (item.id === id) {
+                        const nextCompleted = !item.completed;
+                        return { 
+                            ...item, 
+                            completed: nextCompleted, 
+                            isNew: false,
+                            purchasedAt: (activeTab === 'daily' && nextCompleted) ? now : (activeTab === 'daily' ? null : item.purchasedAt)
+                        };
+                    }
+                    return item;
+                });
+
+                saveDataToCloud({
+                    ...data,
+                    [activeTab]: updatedList
+                });
             };
 
             // アイテム削除
             const handleDelete = (id) => {
-                setData(prev => ({
-                    ...prev,
-                    [activeTab]: prev[activeTab].filter(item => item.id !== id)
-                }));
+                saveDataToCloud({
+                    ...data,
+                    [activeTab]: data[activeTab].filter(item => item.id !== id)
+                });
             };
 
             const tabConfig = {
@@ -201,12 +211,17 @@
             };
 
             return (
-                <div className="min-h-screen flex flex-col max-w-md mx-auto bg-white shadow-xl">
+                <div className="min-h-screen flex flex-col max-w-md mx-auto bg-white shadow-xl relative">
+                    {/* 同期ステータス表示 */}
+                    {isSyncing && (
+                        <div className="absolute top-2 right-2 bg-indigo-600 text-white text-[10px] px-2 py-0.5 rounded-full shadow animate-pulse z-50">
+                            同期中...
+                        </div>
+                    )}
+
                     {/* ヘッダー */}
                     <header className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white p-4 shadow-md flex justify-between items-center">
                         <h1 className="text-base font-bold tracking-wide">🏠 家族情報共有</h1>
-                        
-                        {/* アカウント切り替えスイッチ */}
                         <div className="flex items-center bg-indigo-900/40 p-1 rounded-lg border border-indigo-400/30">
                             <span className="text-[10px] px-1 text-indigo-200">使用者:</span>
                             <button
@@ -224,7 +239,7 @@
                         </div>
                     </header>
 
-                    {/* タブナビゲーション (6つ) */}
+                    {/* タブナビゲーション */}
                     <nav className="grid grid-cols-6 bg-slate-100 p-1 border-b border-slate-200 text-center">
                         {Object.keys(tabConfig).map(tabKey => {
                             const isActive = activeTab === tabKey;
@@ -233,9 +248,7 @@
                                     key={tabKey}
                                     onClick={() => setActiveTab(tabKey)}
                                     className={`py-2 px-0.5 text-[10px] font-semibold rounded-lg transition-all flex flex-col items-center justify-center ${
-                                        isActive 
-                                            ? 'bg-white text-indigo-600 shadow-sm font-bold' 
-                                            : 'text-slate-600 hover:text-slate-900'
+                                        isActive ? 'bg-white text-indigo-600 shadow-sm font-bold' : 'text-slate-600 hover:text-slate-900'
                                     }`}
                                 >
                                     <span>{tabConfig[tabKey].label}</span>
@@ -267,7 +280,6 @@
                                     className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                 />
                             )}
-
                             {activeTab === 'wishes' && (
                                 <>
                                     <input
@@ -285,7 +297,6 @@
                                     />
                                 </>
                             )}
-
                             {activeTab === 'goal' && (
                                 <>
                                     <input
@@ -303,7 +314,6 @@
                                     />
                                 </>
                             )}
-
                             {activeTab === 'cleaning' && (
                                 <>
                                     <input
@@ -338,7 +348,6 @@
                                     </div>
                                 </>
                             )}
-
                             {activeTab === 'travel' && (
                                 <div className="space-y-3">
                                     <input
@@ -348,27 +357,19 @@
                                         onChange={(e) => setInputTravelTitle(e.target.value)}
                                         className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
                                     />
-
                                     <div className="border-t border-slate-200 pt-2">
-                                        <label className="text-xs font-bold text-slate-600 block mb-2">📍 訪問する目的地（複数スポット）のスケジュール</label>
-                                        
+                                        <label className="text-xs font-bold text-slate-600 block mb-2">📍 訪問する目的地（複数スポット）</label>
                                         {travelSpots.map((spot, index) => (
                                             <div key={index} className="bg-white p-2.5 rounded-lg border border-slate-200 mb-2 space-y-2 relative shadow-2xs">
                                                 <div className="flex justify-between items-center">
                                                     <span className="text-[10px] font-bold text-indigo-600">スポット #{index + 1}</span>
                                                     {travelSpots.length > 1 && (
-                                                        <button 
-                                                            type="button" 
-                                                            onClick={() => handleRemoveSpotField(index)}
-                                                            className="text-slate-400 hover:text-rose-500 text-xs px-1"
-                                                        >
-                                                            ✕ 削除
-                                                        </button>
+                                                        <button type="button" onClick={() => handleRemoveSpotField(index)} className="text-slate-400 hover:text-rose-500 text-xs px-1">✕ 削除</button>
                                                     )}
                                                 </div>
                                                 <input
                                                     type="text"
-                                                    placeholder="目的地・スポット名（例：小田原城）"
+                                                    placeholder="目的地・スポット名"
                                                     value={spot.name}
                                                     onChange={(e) => handleSpotChange(index, 'name', e.target.value)}
                                                     className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -376,14 +377,14 @@
                                                 <div className="grid grid-cols-2 gap-1.5">
                                                     <input
                                                         type="text"
-                                                        placeholder="移動方法（例：電車、車）"
+                                                        placeholder="移動方法"
                                                         value={spot.transport}
                                                         onChange={(e) => handleSpotChange(index, 'transport', e.target.value)}
                                                         className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                                     />
                                                     <input
                                                         type="text"
-                                                        placeholder="時間（例：10:00着）"
+                                                        placeholder="時間"
                                                         value={spot.time}
                                                         onChange={(e) => handleSpotChange(index, 'time', e.target.value)}
                                                         className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -391,25 +392,19 @@
                                                 </div>
                                                 <input
                                                     type="text"
-                                                    placeholder="備考・メモ（例：チケット事前購入など）"
+                                                    placeholder="備考・メモ"
                                                     value={spot.memo}
                                                     onChange={(e) => handleSpotChange(index, 'memo', e.target.value)}
                                                     className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                                 />
                                             </div>
                                         ))}
-
-                                        <button
-                                            type="button"
-                                            onClick={handleAddSpotField}
-                                            className="w-full py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded transition"
-                                        >
+                                        <button type="button" onClick={handleAddSpotField} className="w-full py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded transition">
                                             ＋ 別の目的地スポットを追加する
                                         </button>
                                     </div>
                                 </div>
                             )}
-
                             {activeTab === 'events' && (
                                 <>
                                     <input
@@ -436,11 +431,7 @@
                                     />
                                 </>
                             )}
-
-                            <button
-                                type="submit"
-                                className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm rounded-lg transition shadow-sm"
-                            >
+                            <button type="submit" className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm rounded-lg transition shadow-sm">
                                 【{currentUser}】として追加する
                             </button>
                         </form>
@@ -448,7 +439,6 @@
                         {/* リスト一覧表示 */}
                         {activeTab === 'daily' ? (
                             <div className="space-y-4">
-                                {/* 未購入リスト */}
                                 <div>
                                     <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">未購入リスト</h3>
                                     <div className="space-y-2">
@@ -478,8 +468,6 @@
                                         )}
                                     </div>
                                 </div>
-
-                                {/* 購入した枠リスト */}
                                 <div>
                                     <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">🛒 購入した枠（1週間で自動消去）</h3>
                                     <div className="space-y-2">
@@ -513,12 +501,9 @@
                                     <p className="text-center text-slate-400 py-8 text-sm bg-white rounded-xl border border-slate-200">項目はまだありません</p>
                                 ) : (
                                     data[activeTab].map(item => (
-                                        <div 
-                                           key={item.id}
-                                           className={`flex items-start justify-between p-3 bg-white border rounded-xl shadow-sm transition ${item.isNew ? 'border-indigo-400 ring-2 ring-indigo-100 bg-indigo-50/20' : 'border-slate-200'}`}
-                                        >
+                                        <div key={item.id} className={`flex items-start justify-between p-3 bg-white border rounded-xl shadow-sm transition ${item.isNew ? 'border-indigo-400 ring-2 ring-indigo-100 bg-indigo-50/20' : 'border-slate-200'}`}>
                                             <div className="flex items-start gap-3 flex-1">
-                                                {(activeTab === 'cleaning') && (
+                                                {activeTab === 'cleaning' && (
                                                     <input
                                                         type="checkbox"
                                                         checked={item.completed}
@@ -526,30 +511,17 @@
                                                         className="mt-1 w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
                                                     />
                                                 )}
-                                                
                                                 <div className="flex-1">
                                                     <div className="flex items-center gap-2 flex-wrap mb-1">
-                                                        {item.isNew && (
-                                                            <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded animate-pulse">
-                                                                NEW
-                                                            </span>
-                                                        )}
-                                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${item.author === 'パパ' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'}`}>
-                                                            {item.author}
-                                                        </span>
+                                                        {item.isNew && <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded animate-pulse">NEW</span>}
+                                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${item.author === 'パパ' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'}`}>{item.author}</span>
                                                     </div>
-
                                                     {activeTab === 'wishes' && (
                                                         <div>
                                                             <p className="text-sm font-bold text-slate-800">{item.text}</p>
-                                                            {item.notes && (
-                                                                <div className="mt-2 p-2 bg-amber-50/60 border border-amber-200 rounded-lg text-xs text-slate-700 whitespace-pre-wrap">
-                                                                    💡 <strong className="text-amber-800">結論・悩みまとめ:</strong><br/>{item.notes}
-                                                                </div>
-                                                            )}
+                                                            {item.notes && <div className="mt-2 p-2 bg-amber-50/60 border border-amber-200 rounded-lg text-xs text-slate-700 whitespace-pre-wrap">💡 <strong className="text-amber-800">結論・悩みまとめ:</strong><br/>{item.notes}</div>}
                                                         </div>
                                                     )}
-
                                                     {activeTab === 'goal' && (
                                                         <div>
                                                             <p className="text-sm font-bold text-slate-800">🎯 {item.text}</p>
@@ -557,27 +529,21 @@
                                                                 <div className="mt-2 p-2 bg-purple-50/60 border border-purple-200 rounded-lg text-xs text-slate-700">
                                                                     <strong className="text-purple-800 block mb-1">📋 達成までに必要な項目:</strong>
                                                                     <ul className="list-disc list-inside space-y-0.5">
-                                                                        {item.steps.map((step, idx) => (
-                                                                            <li key={idx}>{step}</li>
-                                                                        ))}
+                                                                        {item.steps.map((step, idx) => <li key={idx}>{step}</li>)}
                                                                     </ul>
                                                                 </div>
                                                             )}
                                                         </div>
                                                     )}
-
                                                     {activeTab === 'cleaning' && (
                                                         <div>
-                                                            <p className={`text-sm font-medium ${item.completed ? 'line-through text-slate-400' : 'text-slate-800'}`}>
-                                                                🧹 {item.place}
-                                                            </p>
+                                                            <p className={`text-sm font-medium ${item.completed ? 'line-through text-slate-400' : 'text-slate-800'}`}>🧹 {item.place}</p>
                                                             <div className="flex gap-3 mt-1 text-xs">
                                                                 <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-medium">担当: {item.assignee}</span>
                                                                 <span className="text-slate-500 self-center">📅 期限: {item.date}</span>
                                                             </div>
                                                         </div>
                                                     )}
-
                                                     {activeTab === 'travel' && (
                                                         <div>
                                                             <p className="text-sm font-bold text-slate-900 mb-2">✈️ {item.title}</p>
@@ -595,27 +561,16 @@
                                                             )}
                                                         </div>
                                                     )}
-
                                                     {activeTab === 'events' && (
                                                         <div>
                                                             <p className="text-sm font-bold text-slate-800">📌 {item.text}</p>
-                                                            {item.date && (
-                                                                <p className="text-xs text-emerald-600 font-semibold mt-0.5">⏳ 期日: {item.date}</p>
-                                                            )}
-                                                            {item.memo && (
-                                                                <p className="text-xs text-slate-600 mt-1 p-2 bg-slate-50 rounded border border-slate-100 whitespace-pre-wrap">{item.memo}</p>
-                                                            )}
+                                                            {item.date && <p className="text-xs text-emerald-600 font-semibold mt-0.5">⏳ 期日: {item.date}</p>}
+                                                            {item.memo && <p className="text-xs text-slate-600 mt-1 p-2 bg-slate-50 rounded border border-slate-100 whitespace-pre-wrap">{item.memo}</p>}
                                                         </div>
                                                     )}
                                                 </div>
                                             </div>
-                                            <button
-                                                onClick={() => handleDelete(item.id)}
-                                                className="text-slate-400 hover:text-rose-500 p-1 text-sm transition"
-                                                title="削除"
-                                            >
-                                                ✕
-                                            </button>
+                                            <button onClick={() => handleDelete(item.id)} className="text-slate-400 hover:text-rose-500 p-1 text-sm transition" title="削除">✕</button>
                                         </div>
                                     ))
                                 )}
