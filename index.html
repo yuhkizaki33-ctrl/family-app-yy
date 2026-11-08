@@ -3,7 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>家族情報共有アプリ（Supabase同期版）</title>
+<title>家族共有</title>
+<link rel="apple-touch-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAIAAACyr5FlAAADQklEQVR4nO3dzXFUMRCF0WeKKAgIlhAqWwKCOFgMZf58zTAzT+qWzolA6v5KmzdlP318//WAl7yZfQDqEgeROIjEQSQOInEQiYNIHETiIBIHkTiIxEEkDiJxEImDSBxE4iASB5E4iMRBJA4icRCJg0gcROIgEgeROIjEQSQOInH85vOXd7OPUIg4frqUoY9n4vjh1yb0cSGO43ipBn0c4jhyB/rYPY7XC9i8j63juGb3O/fxtOcfjLth5Z8+fDvjJJXt+HLc9hhs+IRsF8c9O96tj73iuH+7W/WxURyP2us+fewSx2M3ukkfW8Rxxi536GP9OM7b4vJ9LB7H2ftbu4+V4xizuYX7WDaOkTtbtY814xi/rSX7WDCOWXtar4/V4pi7ocX6WOerbKnFrPEJd5GXo1QZR73z3GaFOGpuouap/kv7OCrvoPLZrtE7jvrTr3/CVzSOo8vcu5zzb13j6DXxXqd91jKOjrPueOZ+cXSc8kW7kzeLo918/9Dr/J3i6DXZpNEt2sTRaKb/1OUuPeLoMs3rtbhR9Q9vLYZ4j8qf6Eq/HMuXcdS+Y904Kk/tscretGgcZed1kpr3rRhHzUmdreCty8VRcEbDVLt7rTiqTWe8UhMoFEepuUxUZw5V4qgzkQqKTKNEHEVmUUqFmcyPo8IUapo+mclxTL9/cXPnMzMOZVxj4pSmxaGM682a1YSvsrK42eBPuKNfDmXcY/D0hsahjPuNnOG4OJTxKMMmOSgOZTzWmHmOiEMZZxgw1dPjUMZ5zp5tuR8Ybx5Tqd8bz/+2QlniIBIHkTiIxEEkDiJxEImDSBxE4iASB5E4iMRBJA4icRCJg0gcROIgejv7AKPd+Tu8rX7F6OUgEgeROIjEQSQOInEQiYNIHETiIBIHkTiIxEEkDiJxEImDSBxE4iASB5E4iMRBJA4icRCJg0gcROIgEgeROIjEQSQOInEQiYNIHETiIBIHkTiIxEEkDiJxEJX7j9TU4eUgEgeROIjEQSQOInEQiYNIHETiIBIHkTiIxEEkDiJxEImDSBxE4iASB5E4iMRBJA4icRCJg0gcROIgEgeROIjEQSQOInEQiYNIHETiIBIHkTiIxEH0HbeFtmnFrhm2AAAAAElFTkSuQmCC">
+<link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAIAAACyr5FlAAADQklEQVR4nO3dzXFUMRCF0WeKKAgIlhAqWwKCOFgMZf58zTAzT+qWzolA6v5KmzdlP318//WAl7yZfQDqEgeROIjEQSQOInEQiYNIHETiIBIHkTiIxEEkDiJxEImDSBxE4iASB5E4iMRBJA4icRCJg0gcROIgEgeROIjEQSQOInH85vOXd7OPUIg4frqUoY9n4vjh1yb0cSGO43ipBn0c4jhyB/rYPY7XC9i8j63juGb3O/fxtOcfjLth5Z8+fDvjJJXt+HLc9hhs+IRsF8c9O96tj73iuH+7W/WxURyP2us+fewSx2M3ukkfW8Rxxi536GP9OM7b4vJ9LB7H2ftbu4+V4xizuYX7WDaOkTtbtY814xi/rSX7WDCOWXtar4/V4pi7ocX6WOerbKnFrPEJd5GXo1QZR73z3GaFOGpuouap/kv7OCrvoPLZrtE7jvrTr3/CVzSOo8vcu5zzb13j6DXxXqd91jKOjrPueOZ+cXSc8kW7kzeLo918/9Dr/J3i6DXZpNEt2sTRaKb/1OUuPeLoMs3rtbhR9Q9vLYZ4j8qf6Eq/HMuXcdS+Y904Kk/tscretGgcZed1kpr3rRhHzUmdreCty8VRcEbDVLt7rTiqTWe8UhMoFEepuUxUZw5V4qgzkQqKTKNEHEVmUUqFmcyPo8IUapo+mclxTL9/cXPnMzMOZVxj4pSmxaGM682a1YSvsrK42eBPuKNfDmXcY/D0hsahjPuNnOG4OJTxKMMmOSgOZTzWmHmOiEMZZxgw1dPjUMZ5zp5tuR8Ybx5Tqd8bz/+2QlniIBIHkTiIxEEkDiJxEImDSBxE4iASB5E4iMRBJA4icRCJg0gcROIgejv7AKPd+Tu8rX7F6OUgEgeROIjEQSQOInEQiYNIHETiIBIHkTiIxEEkDiJxEImDSBxE4iASB5E4iMRBJA4icRCJg0gcROIgEgeROIjEQSQOInEQiYNIHETiIBIHkTiIxEEkDiJxEJX7j9TU4eUgEgeROIjEQSQOInEQiYNIHETiIBIHkTiIxEEkDiJxEImDSBxE4iASB5E4iMRBJA4icRCJg0gcROIgEgeROIjEQSQOInEQiYNIHETiIBIHkTiIxEH0HbeFtmnFrhm2AAAAAElFTkSuQmCC">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="家族共有">
+<meta name="theme-color" content="#4f46e5">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <script src="https://cdn.tailwindcss.com"></script>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -162,7 +169,10 @@ function App() {
       {isSyncing && <div className="absolute top-2 right-2 bg-indigo-600 text-white text-[10px] px-2 py-0.5 rounded-full shadow animate-pulse z-50">同期中...</div>}
 
       <header className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white p-4 shadow-md flex justify-between items-center">
-        <h1 className="text-base font-bold tracking-wide">🏠 家族情報共有</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-base font-bold tracking-wide">🏠 家族情報共有</h1>
+          <button onClick={() => { location.href = location.pathname + '?v=' + Date.now(); }} className="text-xs bg-indigo-900/40 border border-indigo-400/30 rounded-md px-2 py-1" title="最新版に更新">🔄</button>
+        </div>
         <div className="flex items-center bg-indigo-900/40 p-1 rounded-lg border border-indigo-400/30">
           <span className="text-[10px] px-1 text-indigo-200">使用者:</span>
           {['パパ', 'ママ'].map(u => (
