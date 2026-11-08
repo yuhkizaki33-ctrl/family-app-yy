@@ -41,7 +41,7 @@
 
             // 起動時にクラウドからデータを取得
             useEffect(() => {
-                if (BIN_ID && BIN_ID !== "YOUR_BIN_ID") {
+                if (BIN_ID && BIN_ID !== "$2a$10$upl4MvjvsdlpyVr.e0QXheTHBMDhvUcpeB3e7v2GT.a.Bgl6JvgLi") {
                     fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
                         headers: { 'X-Master-Key': API_KEY }
                     })
