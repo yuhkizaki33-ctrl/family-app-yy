@@ -139,7 +139,6 @@
                 } else if (activeTab === 'travel') {
                     if (!inputTravelTitle.trim()) return;
                     newItem.title = inputTravelTitle.trim();
-                    // 空のスポットを除外
                     newItem.spots = travelSpots.filter(s => s.name.trim() !== '');
                 } else if (activeTab === 'events') {
                     if (!inputText.trim()) return;
@@ -446,7 +445,7 @@
                             </button>
                         </form>
 
-                        {/* リスト一覧表示（日用品の場合は未購入と購入済み枠に分ける） */}
+                        {/* リスト一覧表示 */}
                         {activeTab === 'daily' ? (
                             <div className="space-y-4">
                                 {/* 未購入リスト */}
@@ -509,7 +508,6 @@
                                 </div>
                             </div>
                         ) : (
-                            /* その他のリスト表示 */
                             <div className="space-y-2">
                                 {data[activeTab].length === 0 ? (
                                     <p className="text-center text-slate-400 py-8 text-sm bg-white rounded-xl border border-slate-200">項目はまだありません</p>
