@@ -26,7 +26,7 @@
         const SUPABASE_URL = "https://jltgpvkwodviqvhcmptw.supabase.co/rest/v1/";       // 例: "https://abcdef.supabase.co"
         const SUPABASE_ANON_KEY = "sb_publishable_c3crBelg_3iI0ICIjaMX4w_Xw8uav2o"; // 例: "eyJhG..."
 
-        const supabaseClient = (SUPABASE_URL !== "YOUR_SUPABASE_URL" && SUPABASE_ANON_KEY !== "YOUR_SUPABASE_ANON_KEY")
+        const supabaseClient = (SUPABASE_URL !== "https://jltgpvkwodviqvhcmptw.supabase.co/rest/v1/" && SUPABASE_ANON_KEY !== "sb_publishable_c3crBelg_3iI0ICIjaMX4w_Xw8uav2o")
             ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
             : null;
 
