@@ -23,7 +23,7 @@
             const initialData = {
                 daily: [
                     { id: 101, text: "牛乳（1L）", completed: false, author: "ママ", isNew: false, purchasedAt: null },
-                    { id: 102, text: "卵（1パック）", completed: true, author: "パパ", isNew: false, purchasedAt: Date.now() - 86400000 * 2 } // 2日前購入の例
+                    { id: 102, text: "卵（1パック）", completed: true, author: "パパ", isNew: false, purchasedAt: Date.now() - 86400000 * 2 }
                 ],
                 wishes: [
                     { id: 201, text: "新しいホットプレート", completed: false, author: "ママ", isNew: false, notes: "型番によって値段が違うので要比較。電気代もチェックする。" }
@@ -35,7 +35,16 @@
                     { id: 301, place: "お風呂の防カビ燻煙剤", assignee: "パパ", date: "2026-11-15", completed: false, author: "パパ", isNew: false }
                 ],
                 travel: [
-                    { id: 401, destination: "春の箱根旅行", transport: "ロマンスカー ＋ 路線バス", time: "10:00発 ⇒ 12:30着", memo: "露天風呂付き客室を予約する", author: "パパ", isNew: false }
+                    { 
+                        id: 401, 
+                        title: "春の箱根・小田原旅行", 
+                        spots: [
+                            { name: "小田原城", transport: "電車（東海道線）", time: "09:00発 ⇒ 10:15着", memo: "天守閣に登る" },
+                            { name: "箱根ガラスの森美術館", transport: "路線バス", time: "11:30発 ⇒ 12:00着", memo: "ランチも併設レストランで食べる" }
+                        ],
+                        author: "パパ", 
+                        isNew: false 
+                    }
                 ],
                 events: [
                     { id: 501, text: "瑠華の保育園遠足", date: "2026-05-12", memo: "お弁当とおやつの準備", author: "ママ", isNew: false }
@@ -46,11 +55,11 @@
             const [currentUser, setCurrentUser] = useState('パパ');
 
             const [data, setData] = useState(() => {
-                const saved = localStorage.getItem('family_app_data_final');
+                const saved = localStorage.getItem('family_app_data_ultimate');
                 if (!saved) return initialData;
                 const parsed = JSON.parse(saved);
                 
-                // 日用品の1週間自動消去チェック（購入済みになってから7日経ったものを除外）
+                // 日用品の1週間自動消去チェック
                 const now = Date.now();
                 const oneWeek = 7 * 24 * 60 * 60 * 1000;
                 if (parsed.daily) {
@@ -72,14 +81,32 @@
             const [inputSteps, setInputSteps] = useState('');
             const [inputAssignee, setInputAssignee] = useState('パパ');
             const [inputPlace, setInputPlace] = useState('');
-            const [inputDestination, setInputDestination] = useState('');
-            const [inputTransport, setInputTransport] = useState('');
-            const [inputTime, setInputTime] = useState('');
+            
+            // 旅行リスト用（複数スポット対応）
+            const [inputTravelTitle, setInputTravelTitle] = useState('');
+            const [travelSpots, setTravelSpots] = useState([{ name: '', transport: '', time: '', memo: '' }]);
 
             // データ変更時にローカルストレージへ保存
             useEffect(() => {
-                localStorage.setItem('family_app_data_final', JSON.stringify(data));
+                localStorage.setItem('family_app_data_ultimate', JSON.stringify(data));
             }, [data]);
+
+            // 旅行スポットの入力欄を追加する
+            const handleAddSpotField = () => {
+                setTravelSpots(prev => [...prev, { name: '', transport: '', time: '', memo: '' }]);
+            };
+
+            // 旅行スポットの入力値を変更する
+            const handleSpotChange = (index, field, value) => {
+                const updated = [...travelSpots];
+                updated[index][field] = value;
+                setTravelSpots(updated);
+            };
+
+            // 旅行スポットの入力欄を削除する
+            const handleRemoveSpotField = (index) => {
+                setTravelSpots(travelSpots.filter((_, i) => i !== index));
+            };
 
             // アイテム追加
             const handleAddItem = (e) => {
@@ -110,11 +137,10 @@
                     newItem.assignee = inputAssignee;
                     newItem.date = inputDate || '期限なし';
                 } else if (activeTab === 'travel') {
-                    if (!inputDestination.trim()) return;
-                    newItem.destination = inputDestination.trim();
-                    newItem.transport = inputTransport.trim();
-                    newItem.time = inputTime.trim();
-                    newItem.memo = inputMemo.trim();
+                    if (!inputTravelTitle.trim()) return;
+                    newItem.title = inputTravelTitle.trim();
+                    // 空のスポットを除外
+                    newItem.spots = travelSpots.filter(s => s.name.trim() !== '');
                 } else if (activeTab === 'events') {
                     if (!inputText.trim()) return;
                     newItem.text = inputText.trim();
@@ -134,9 +160,8 @@
                 setInputMemo('');
                 setInputNotes('');
                 setInputSteps('');
-                setInputDestination('');
-                setInputTransport('');
-                setInputTime('');
+                setInputTravelTitle('');
+                setTravelSpots([{ name: '', transport: '', time: '', memo: '' }]);
             };
 
             // チェック切り替え
@@ -247,11 +272,11 @@
                             {activeTab === 'wishes' && (
                                 <>
                                     <input
-                                    type="text"
-                                    placeholder="欲しいもの・購入希望を入力"
-                                    value={inputText}
-                                    onChange={(e) => setInputText(e.target.value)}
-                                    className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        type="text"
+                                        placeholder="欲しいもの・購入希望を入力"
+                                        value={inputText}
+                                        onChange={(e) => setInputText(e.target.value)}
+                                        className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                     />
                                     <textarea
                                         placeholder="悩んでいることや結論のまとめスペース"
@@ -316,38 +341,74 @@
                             )}
 
                             {activeTab === 'travel' && (
-                                <>
+                                <div className="space-y-3">
                                     <input
                                         type="text"
-                                        placeholder="目的地（例：箱根温泉）"
-                                        value={inputDestination}
-                                        onChange={(e) => setInputDestination(e.target.value)}
-                                        className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        placeholder="旅行のタイトル（例：春の箱根・小田原旅行）"
+                                        value={inputTravelTitle}
+                                        onChange={(e) => setInputTravelTitle(e.target.value)}
+                                        className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
                                     />
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <input
-                                            type="text"
-                                            placeholder="移動方法（例：車、電車）"
-                                            value={inputTransport}
-                                            onChange={(e) => setInputTransport(e.target.value)}
-                                            className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                        />
-                                        <input
-                                            type="text"
-                                            placeholder="時間（例：10:00発）"
-                                            value={inputTime}
-                                            onChange={(e) => setInputTime(e.target.value)}
-                                            className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                        />
+
+                                    <div className="border-t border-slate-200 pt-2">
+                                        <label className="text-xs font-bold text-slate-600 block mb-2">📍 訪問する目的地（複数スポット）のスケジュール</label>
+                                        
+                                        {travelSpots.map((spot, index) => (
+                                            <div key={index} className="bg-white p-2.5 rounded-lg border border-slate-200 mb-2 space-y-2 relative shadow-2xs">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-[10px] font-bold text-indigo-600">スポット #{index + 1}</span>
+                                                    {travelSpots.length > 1 && (
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={() => handleRemoveSpotField(index)}
+                                                            className="text-slate-400 hover:text-rose-500 text-xs px-1"
+                                                        >
+                                                            ✕ 削除
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                <input
+                                                    type="text"
+                                                    placeholder="目的地・スポット名（例：小田原城）"
+                                                    value={spot.name}
+                                                    onChange={(e) => handleSpotChange(index, 'name', e.target.value)}
+                                                    className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                                />
+                                                <div className="grid grid-cols-2 gap-1.5">
+                                                    <input
+                                                        type="text"
+                                                        placeholder="移動方法（例：電車、車）"
+                                                        value={spot.transport}
+                                                        onChange={(e) => handleSpotChange(index, 'transport', e.target.value)}
+                                                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                                    />
+                                                    <input
+                                                        type="text"
+                                                        placeholder="時間（例：10:00着）"
+                                                        value={spot.time}
+                                                        onChange={(e) => handleSpotChange(index, 'time', e.target.value)}
+                                                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                                    />
+                                                </div>
+                                                <input
+                                                    type="text"
+                                                    placeholder="備考・メモ（例：チケット事前購入など）"
+                                                    value={spot.memo}
+                                                    onChange={(e) => handleSpotChange(index, 'memo', e.target.value)}
+                                                    className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                                />
+                                            </div>
+                                        ))}
+
+                                        <button
+                                            type="button"
+                                            onClick={handleAddSpotField}
+                                            className="w-full py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded transition"
+                                        >
+                                            ＋ 別の目的地スポットを追加する
+                                        </button>
                                     </div>
-                                    <input
-                                        type="text"
-                                        placeholder="目的地についての備考（任意）"
-                                        value={inputMemo}
-                                        onChange={(e) => setInputMemo(e.target.value)}
-                                        className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                    />
-                                </>
+                                </div>
                             )}
 
                             {activeTab === 'events' && (
@@ -521,12 +582,19 @@
 
                                                     {activeTab === 'travel' && (
                                                         <div>
-                                                            <p className="text-sm font-bold text-slate-800">✈️ 目的地: {item.destination}</p>
-                                                            <div className="mt-1 text-xs space-y-0.5 text-slate-600">
-                                                                {item.transport && <p>🚗 移動: {item.transport}</p>}
-                                                                {item.time && <p>⏰ 時間: {item.time}</p>}
-                                                                {item.memo && <p className="text-slate-500 mt-1">📝 備考: {item.memo}</p>}
-                                                            </div>
+                                                            <p className="text-sm font-bold text-slate-900 mb-2">✈️ {item.title}</p>
+                                                            {item.spots && item.spots.length > 0 && (
+                                                                <div className="space-y-2 border-l-2 border-sky-300 pl-3">
+                                                                    {item.spots.map((spot, idx) => (
+                                                                        <div key={idx} className="bg-sky-50/50 p-2 rounded-lg border border-sky-100 text-xs text-slate-700">
+                                                                            <p className="font-bold text-sky-900">📍 {idx + 1}. {spot.name}</p>
+                                                                            {spot.transport && <p className="mt-0.5">🚗 移動: {spot.transport}</p>}
+                                                                            {spot.time && <p>⏰ 時間: {spot.time}</p>}
+                                                                            {spot.memo && <p className="text-slate-500 mt-1">📝 備考: {spot.memo}</p>}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     )}
 
