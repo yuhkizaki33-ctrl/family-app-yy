@@ -58,6 +58,7 @@ function App() {
   const [f, setF] = useState({ text: '', date: '', memo: '', notes: '', steps: '', assignee: 'パパ', place: '', travelTitle: '' });
   const [spots, setSpots] = useState([emptySpot()]);
   const set = (k) => (e) => setF(p => ({ ...p, [k]: e.target.value }));
+  const [editingId, setEditingId] = useState(null);
 
   useEffect(() => {
     const fetchAppData = async () => {
@@ -90,19 +91,33 @@ function App() {
     setIsSyncing(false);
   };
 
+  const resetForm = () => {
+    setEditingId(null);
+    setF({ text: '', date: '', memo: '', notes: '', steps: '', assignee: 'パパ', place: '', travelTitle: '' });
+    setSpots([emptySpot()]);
+  };
+
+  const startEdit = (item) => {
+    setEditingId(item.id);
+    setF({ text: item.text || '', date: item.date && item.date !== '期限なし' ? item.date : '', memo: item.memo || '', notes: item.notes || '', steps: (item.steps || []).join('\n'), assignee: item.assignee || 'パパ', place: item.place || '', travelTitle: item.title || '' });
+    setSpots(item.spots && item.spots.length ? item.spots.map(s => ({ ...emptySpot(), ...s })) : [emptySpot()]);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleAdd = (e) => {
     e.preventDefault();
-    const item = { id: Date.now(), completed: false, author: currentUser };
+    const old = editingId ? (data[activeTab] || []).find(i => i.id === editingId) : null;
+    const item = old ? { ...old } : { id: Date.now(), completed: false, author: currentUser };
     const t = f.text.trim();
-    if (activeTab === 'daily') { if (!t) return; item.text = t; item.purchasedAt = null; }
+    if (activeTab === 'daily') { if (!t) return; item.text = t; if (!old) item.purchasedAt = null; }
     else if (activeTab === 'wishes') { if (!t) return; item.text = t; item.notes = f.notes.trim(); }
     else if (activeTab === 'goal') { if (!t) return; item.text = t; item.steps = f.steps.split('\n').filter(s => s.trim()); }
     else if (activeTab === 'cleaning') { if (!f.place.trim()) return; item.place = f.place.trim(); item.assignee = f.assignee; item.date = f.date || '期限なし'; }
     else if (activeTab === 'travel') { if (!f.travelTitle.trim()) return; item.title = f.travelTitle.trim(); item.spots = spots.filter(s => s.name.trim()); }
     else if (activeTab === 'events') { if (!t) return; item.text = t; item.date = f.date; item.memo = f.memo.trim(); }
-    save({ ...data, [activeTab]: [item, ...(data[activeTab] || [])] });
-    setF({ text: '', date: '', memo: '', notes: '', steps: '', assignee: 'パパ', place: '', travelTitle: '' });
-    setSpots([emptySpot()]);
+    const cur = data[activeTab] || [];
+    save({ ...data, [activeTab]: old ? cur.map(i => i.id === old.id ? item : i) : [item, ...cur] });
+    resetForm();
   };
 
   const toggleComplete = (id) => {
@@ -132,7 +147,10 @@ function App() {
           {children}
         </div>
       </div>
-      <button onClick={() => handleDelete(item.id)} className="text-slate-400 hover:text-rose-500 p-1 text-sm transition" title="削除">✕</button>
+      <div className="flex flex-col items-center">
+        <button onClick={() => startEdit(item)} className="text-slate-400 hover:text-indigo-600 p-1 text-sm transition" title="編集">✎</button>
+        <button onClick={() => { handleDelete(item.id); if (editingId === item.id) resetForm(); }} className="text-slate-400 hover:text-rose-500 p-1 text-sm transition" title="削除">✕</button>
+      </div>
     </div>
   );
 
@@ -157,7 +175,7 @@ function App() {
 
       <nav className="grid grid-cols-6 bg-slate-100 p-1 border-b border-slate-200 text-center">
         {Object.keys(tabConfig).map(k => (
-          <button key={k} onClick={() => setActiveTab(k)} className={`py-2 px-0.5 text-[10px] font-semibold rounded-lg transition-all ${activeTab === k ? 'bg-white text-indigo-600 shadow-sm font-bold' : 'text-slate-600 hover:text-slate-900'}`}>{tabConfig[k].label}</button>
+          <button key={k} onClick={() => { setActiveTab(k); resetForm(); }} className={`py-2 px-0.5 text-[10px] font-semibold rounded-lg transition-all ${activeTab === k ? 'bg-white text-indigo-600 shadow-sm font-bold' : 'text-slate-600 hover:text-slate-900'}`}>{tabConfig[k].label}</button>
         ))}
       </nav>
 
@@ -169,7 +187,8 @@ function App() {
           <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">✎ 投稿者: <strong className="text-indigo-600">{currentUser}</strong></span>
         </div>
 
-        <form onSubmit={handleAdd} className="bg-slate-50 p-3 rounded-xl border border-slate-200 mb-4 shadow-sm space-y-3">
+        <form onSubmit={handleAdd} className={`p-3 rounded-xl border mb-4 shadow-sm space-y-3 ${editingId ? 'bg-amber-50 border-amber-400' : 'bg-slate-50 border-slate-200'}`}>
+          {editingId && <p className="text-xs font-bold text-amber-700">✎ 編集中（更新するかキャンセルしてください）</p>}
           {activeTab === 'daily' && <input type="text" placeholder="買う日用品を入力（例：ティッシュ）" value={f.text} onChange={set('text')} className={inputCls} />}
           {activeTab === 'wishes' && <>
             <input type="text" placeholder="欲しいもの・購入希望を入力" value={f.text} onChange={set('text')} className={inputCls} />
@@ -225,7 +244,10 @@ function App() {
             </div>
             <textarea placeholder="情報の詳細（メモなど）" value={f.memo} onChange={set('memo')} className={inputCls + " h-16"} />
           </>}
-          <button type="submit" className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm rounded-lg transition shadow-sm">【{currentUser}】として追加する</button>
+          <div className="flex gap-2">
+            <button type="submit" className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm rounded-lg transition shadow-sm">{editingId ? '✎ 内容を更新する' : `【${currentUser}】として追加する`}</button>
+            {editingId && <button type="button" onClick={resetForm} className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm rounded-lg">キャンセル</button>}
+          </div>
         </form>
 
         {activeTab === 'daily' ? (
@@ -299,4 +321,4 @@ function App() {
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
 </body>
-</html>                                         
+</html>
