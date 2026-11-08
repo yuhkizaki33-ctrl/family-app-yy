@@ -17,7 +17,7 @@
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
-  body::before { content:''; position:fixed; inset:0; z-index:-1; background: url(bg.JPG) center/cover no-repeat, url(bg.jpg.JPG) center/cover no-repeat, url(bg.jpg) center/cover no-repeat, #f8fafc; }
+  body::before { content:''; position:fixed; inset:0; z-index:-1; background: var(--bgimg, none) center/cover no-repeat, url(bg.JPG) center/cover no-repeat, url(bg.jpg.JPG) center/cover no-repeat, url(bg.jpg) center/cover no-repeat, #f8fafc; }
 </style>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased">
@@ -69,6 +69,34 @@ function App() {
   const [spots, setSpots] = useState([emptySpot()]);
   const set = (k) => (e) => setF(p => ({ ...p, [k]: e.target.value }));
   const [editingId, setEditingId] = useState(null);
+  const [hasBg, setHasBg] = useState(false);
+  const applyBg = (url) => {
+    document.documentElement.style.setProperty('--bgimg', url ? `url(${url})` : 'none');
+    setHasBg(!!url);
+  };
+  useEffect(() => {
+    try { const u = localStorage.getItem('bgImage'); if (u) applyBg(u); } catch (e) {}
+  }, []);
+  const pickBg = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const img = new Image();
+    const src = URL.createObjectURL(file);
+    img.onload = () => {
+      const max = 900, r = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * r); c.height = Math.round(img.height * r);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      const url = c.toDataURL('image/jpeg', 0.7);
+      try { localStorage.setItem('bgImage', url); } catch (err) { setError('背景を保存できませんでした'); }
+      applyBg(url);
+      URL.revokeObjectURL(src);
+    };
+    img.onerror = () => setError('この写真は読み込めませんでした');
+    img.src = src;
+    e.target.value = '';
+  };
+  const clearBg = () => { try { localStorage.removeItem('bgImage'); } catch (e) {} applyBg(null); };
 
   useEffect(() => {
     const fetchAppData = async () => {
@@ -175,6 +203,8 @@ function App() {
         <div className="flex items-center gap-2">
           <h1 className="text-base font-bold tracking-wide">🏠 家族情報共有</h1>
           <button onClick={() => { location.href = location.pathname + '?v=' + Date.now(); }} className="text-xs bg-indigo-900/40 border border-indigo-400/30 rounded-md px-2 py-1" title="最新版に更新">🔄</button>
+          <label className="text-xs bg-indigo-900/40 border border-indigo-400/30 rounded-md px-2 py-1 cursor-pointer" title="背景の写真">🖼<input type="file" accept="image/*" onChange={pickBg} className="hidden" /></label>
+          {hasBg && <button onClick={clearBg} className="text-xs bg-indigo-900/40 border border-indigo-400/30 rounded-md px-2 py-1" title="背景を戻す">✕</button>}
         </div>
         <div className="flex items-center bg-indigo-900/40 p-1 rounded-lg border border-indigo-400/30">
           <span className="text-[10px] px-1 text-indigo-200">使用者:</span>
