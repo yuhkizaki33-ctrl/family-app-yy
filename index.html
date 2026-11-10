@@ -104,7 +104,7 @@ function App() {
   const importInbox = async (base) => {
     const { data: rows } = await supabaseClient.from('voice_inbox').select('*').order('id');
     if (!rows || rows.length === 0) return;
-    const lists = ['daily', 'wishes', 'goal', 'events'];
+    const lists = ['daily', 'wishes', 'goal', 'cleaning', 'travel', 'events'];
     const seen = new Set();
     lists.forEach(l => (base[l] || []).forEach(i => { if (i.voiceId) seen.add(i.voiceId); }));
     const next = { ...base };
@@ -116,6 +116,8 @@ function App() {
       if (l === 'wishes') item.notes = '';
       if (l === 'goal') item.steps = [];
       if (l === 'events') { item.date = ''; item.memo = ''; }
+      if (l === 'cleaning') { item.place = r.text; item.assignee = r.author || 'パパ'; item.date = '期限なし'; }
+      if (l === 'travel') { item.title = r.text; item.spots = []; }
       next[l] = [item, ...(next[l] || [])];
       count++;
     });
