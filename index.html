@@ -62,6 +62,8 @@ function App() {
   const [activeTab, setActiveTab] = useState('daily');
   const [currentUser, setCurrentUser] = useState('パパ');
   const [data, setData] = useState(initialData);
+  const dataRef = useRef(initialData);
+  dataRef.current = data;
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState('');
 
@@ -98,12 +100,39 @@ function App() {
   };
   const clearBg = () => { try { localStorage.removeItem('bgImage'); } catch (e) {} applyBg(null); };
 
+  // Siriショートカットから届いた音声メモを「購入希望」に取り込む
+  const importInbox = async (base) => {
+    const { data: rows } = await supabaseClient.from('voice_inbox').select('*').order('id');
+    if (!rows || rows.length === 0) return;
+    const lists = ['daily', 'wishes', 'goal', 'events'];
+    const seen = new Set();
+    lists.forEach(l => (base[l] || []).forEach(i => { if (i.voiceId) seen.add(i.voiceId); }));
+    const next = { ...base };
+    let count = 0;
+    rows.filter(r => !seen.has(r.id)).forEach(r => {
+      const l = lists.includes(r.list) ? r.list : 'wishes';
+      const item = { id: Date.parse(r.created_at) || Date.now(), voiceId: r.id, completed: false, author: r.author || 'パパ', text: r.text };
+      if (l === 'daily') item.purchasedAt = null;
+      if (l === 'wishes') item.notes = '';
+      if (l === 'goal') item.steps = [];
+      if (l === 'events') { item.date = ''; item.memo = ''; }
+      next[l] = [item, ...(next[l] || [])];
+      count++;
+    });
+    if (count) {
+      setData(next);
+      const { error: err } = await supabaseClient.from('family_data').upsert({ id: 1, content: next });
+      if (err) { setError('音声メモの保存エラー: ' + err.message); return; }
+    }
+    await supabaseClient.from('voice_inbox').delete().in('id', rows.map(r => r.id));
+  };
+
   useEffect(() => {
     const fetchAppData = async () => {
       setIsSyncing(true);
       const { data: row, error: err } = await supabaseClient.from('family_data').select('*').eq('id', 1).maybeSingle();
       if (err) { setError('読み込みエラー: ' + err.message); }
-      else if (row && row.content) { setData({ ...initialData, ...cleanDaily(row.content) }); }
+      else if (row && row.content) { const loaded = { ...initialData, ...cleanDaily(row.content) }; setData(loaded); await importInbox(loaded); }
       else {
         const { error: e2 } = await supabaseClient.from('family_data').upsert({ id: 1, content: initialData });
         if (e2) setError('初期保存エラー: ' + e2.message);
@@ -117,8 +146,11 @@ function App() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'family_data' }, (payload) => {
         if (payload.new && payload.new.content) setData({ ...initialData, ...payload.new.content });
       })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'voice_inbox' }, () => importInbox(dataRef.current))
       .subscribe();
-    return () => { supabaseClient.removeChannel(channel); };
+    const onVis = () => { if (document.visibilityState === 'visible') importInbox(dataRef.current); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { supabaseClient.removeChannel(channel); document.removeEventListener('visibilitychange', onVis); };
   }, []);
 
   const save = async (newData) => {
